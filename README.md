@@ -6,7 +6,7 @@ A static map of **vending machines** (`amenity=vending_machine`) from [OpenStree
 - [Leaflet 1.9.4](https://leafletjs.com/) + [Leaflet.markercluster 1.5.3](https://github.com/Leaflet/Leaflet.markercluster) from unpkg (pinned, with SRI hashes).
 - Data is prebuilt into `data/vending.geojson` by a nightly GitHub Action that queries the Overpass API.
 
-Features: marker clustering, filter panel by `vending` type with counts (`drinks;sweets` counts for both), per-type colored emoji markers, popups with operator/brand/payment/opening hours/level/note and *View/Edit on OSM* links, "Locate me", data timestamp + total count, mobile layout with a collapsible panel.
+Features: marker clustering, filter panel with 9 groups covering the `vending=*` values used worldwide (see [docs/vending-values.md](docs/vending-values.md); synonyms like `snack`/`snacks` are merged, `drinks;sweets` counts for both), per-type colored emoji markers, popups with operator/brand/payment/opening hours/level/note and *View/Edit on OSM* links, "Locate me", data timestamp + total count, mobile layout with a collapsible panel.
 
 ## Adding missing machines
 

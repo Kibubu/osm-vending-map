@@ -4,18 +4,46 @@
 
   const DATA_URL = 'data/vending.geojson';
 
-  // Order matters: the first matching type picks the marker icon.
+  // Groups of OSM vending=* values (see docs/vending-values.md for the worldwide list).
+  // Order matters for the legend; a machine's marker uses the group of its first vending value.
   const TYPES = [
-    { key: 'drinks',                   label: 'Drinks',            emoji: '🥤', color: '#1f77b4' },
-    { key: 'sweets',                   label: 'Sweets',            emoji: '🍫', color: '#d62781' },
-    { key: 'food',                     label: 'Food',              emoji: '🥪', color: '#2ca02c' },
-    { key: 'cigarettes',               label: 'Cigarettes',        emoji: '🚬', color: '#7f4f24' },
-    { key: 'parking_tickets',          label: 'Parking tickets',   emoji: '🅿️', color: '#3949ab' },
-    { key: 'public_transport_tickets', label: 'Transport tickets', emoji: '🎫', color: '#e67700' },
-    { key: 'other',                    label: 'Other / unknown',   emoji: '📦', color: '#6c757d' },
+    { key: 'drinks', label: 'Drinks', emoji: '🥤', color: '#1f77b4',
+      values: ["drinks", "coffee", "water", "milk", "beverages", "wine", "beer", "hot_drinks", "alcohol", "juice", "tea", "raw_milk"] },
+    { key: 'food', label: 'Food & snacks', emoji: '🥪', color: '#2ca02c',
+      values: ["food", "sweets", "eggs", "bread", "pizza", "ice_cream", "snacks", "chewing_gums", "meat", "potatoes", "honey", "cheese", "rice_polishing", "sausages", "snack", "vegetables", "noodles", "fruit", "sausage", "strawberries", "fruits", "pasta", "butter", "french_fries"] },
+    { key: 'tobacco', label: 'Tobacco', emoji: '🚬', color: '#7f4f24',
+      values: ["cigarettes", "e-cigarettes", "cbd", "cannabis", "tobacco"] },
+    { key: 'tickets', label: 'Tickets & payment', emoji: '🎫', color: '#3949ab',
+      values: ["parking_tickets", "public_transport_tickets", "admission_tickets", "subscription", "toll", "telephone_vouchers", "tickets", "ticket_validator", "coin_change_machine", "subway_tokens", "public_transport_plans", "lottery", "sim_cards", "coin_rolls"] },
+    { key: 'health', label: 'Health & hygiene', emoji: '💊', color: '#d62781',
+      values: ["condoms", "contact_lenses", "feminine_hygiene", "chemist", "syringes", "pharmacy", "sex_toys", "first_aid", "toothpaste", "toothbrushes", "toothbrushs"] },
+    { key: 'pets', label: 'Pets & animals', emoji: '🐕', color: '#8c6d00',
+      values: ["excrement_bags", "animal_feed", "pet", "fishing_bait", "pet_food", "fishing_tackle"] },
+    { key: 'vehicles', label: 'Fuel & bikes', emoji: '⛽', color: '#c92a2a',
+      values: ["fuel", "bicycle_tube", "gas", "battery_swap", "gas_bottles"] },
+    { key: 'services', label: 'Services & returns', emoji: '♻️', color: '#0b7285',
+      values: ["bottle_return", "newspapers", "ice_cubes", "stamps", "parcel_pickup", "locker", "key", "photos", "ice", "parcel_mail_in", "laundry", "trash_bag", "laundry_detergent", "photo"] },
+    { key: 'goods', label: 'Goods & novelties', emoji: '🎁', color: '#7048e8',
+      values: ["movies", "elongated_coin", "toys", "flowers", "electronics", "candles", "art", "books", "flower_seeds", "coin", "wood_pellet", "umbrellas", "clothes", "swimming_items", "ink_cartridges"] },
+    { key: 'other', label: 'Other / unknown', emoji: '📦', color: '#6c757d', values: [] },
   ];
   const TYPE_BY_KEY = Object.fromEntries(TYPES.map((t) => [t.key, t]));
-  const KNOWN = new Set(TYPES.map((t) => t.key).filter((k) => k !== 'other'));
+  const GROUP_OF = {};
+  TYPES.forEach((t) => t.values.forEach((v) => { GROUP_OF[v] = t.key; }));
+
+  // Common, documented values offered as quick picks in the "add a machine" form.
+  const ADD_CHOICES = [
+    ['drinks', '🥤 Drinks'], ['coffee', '☕ Coffee'], ['water', '💧 Water'], ['milk', '🥛 Milk'],
+    ['sweets', '🍫 Sweets'], ['snacks', '🥨 Snacks'], ['food', '🥪 Food'], ['eggs', '🥚 Eggs'],
+    ['bread', '🍞 Bread'], ['ice_cream', '🍦 Ice cream'], ['meat', '🥩 Meat'], ['honey', '🍯 Honey'],
+    ['cigarettes', '🚬 Cigarettes'], ['e-cigarettes', '💨 E-cigarettes'],
+    ['parking_tickets', '🅿️ Parking'], ['public_transport_tickets', '🚌 Transport tickets'],
+    ['admission_tickets', '🎟️ Admission'], ['condoms', '🩹 Condoms'], ['feminine_hygiene', '🌸 Feminine hygiene'],
+    ['excrement_bags', '🐕 Dog bags'], ['animal_feed', '🦆 Animal feed'], ['fishing_bait', '🎣 Fishing bait'],
+    ['fuel', '⛽ Fuel'], ['bicycle_tube', '🚲 Bicycle tubes'], ['bottle_return', '♻️ Bottle return'],
+    ['newspapers', '📰 Newspapers'], ['stamps', '✉️ Stamps'], ['parcel_pickup', '📦 Parcel pickup'],
+    ['toys', '🧸 Toys'], ['flowers', '💐 Flowers'],
+  ];
 
   const $ = (id) => document.getElementById(id);
 
@@ -39,12 +67,13 @@
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  /** Split "drinks;sweets" (or the common mistake "drinks,sweets") into known categories; anything else maps to "other". */
+  /** Split "drinks;sweets" (or the common mistake "drinks,sweets") and map each value to its group; unknown values map to "other". */
   function categoriesOf(props) {
-    const raw = (props.vending || '').split(/[;,]/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const raw = (props.vending || '').split(/[;,]/)
+      .map((s) => s.trim().toLowerCase().replace(/\s+/g, '_')).filter(Boolean);
     const cats = [];
     for (const v of raw) {
-      const k = KNOWN.has(v) ? v : 'other';
+      const k = GROUP_OF[v] || 'other';
       if (!cats.includes(k)) cats.push(k);
     }
     return cats.length ? cats : ['other'];
@@ -277,8 +306,8 @@
       <h3>Add a vending machine</h3>
       <p class="muted">Drag the pin to the exact spot. <span class="coords"></span></p>
       <fieldset class="type-chips"><legend>What does it sell?</legend>
-        ${TYPES.filter((t) => t.key !== 'other').map((t) =>
-          `<label class="chip"><input type="checkbox" name="vending" value="${t.key}"><span>${t.emoji} ${esc(t.label)}</span></label>`).join('')}
+        ${ADD_CHOICES.map(([v, label]) =>
+          `<label class="chip"><input type="checkbox" name="vending" value="${v}"><span>${esc(label)}</span></label>`).join('')}
         <input type="text" name="vending_other" placeholder="Other (e.g. eggs, excrement_bags)" maxlength="80">
       </fieldset>
       <label class="field">Details <span class="muted">(optional)</span>

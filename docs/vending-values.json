@@ -1,0 +1,1100 @@
+{
+ "source": "taginfo.openstreetmap.org",
+ "data_until": "2026-10-13",
+ "groups": [
+  {
+   "name": "Drinks",
+   "emoji": "🥤",
+   "values": [
+    {
+     "value": "drinks",
+     "count": 56719,
+     "documented": true,
+     "description": "A machine vending hot or cold drinks"
+    },
+    {
+     "value": "coffee",
+     "count": 6910,
+     "documented": true,
+     "description": "A machine vending coffee"
+    },
+    {
+     "value": "water",
+     "count": 5563,
+     "documented": true,
+     "description": "A machine vending drinking water"
+    },
+    {
+     "value": "milk",
+     "count": 1956,
+     "documented": true,
+     "description": "A machine vending fresh milk"
+    },
+    {
+     "value": "beverages",
+     "count": 113,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "wine",
+     "count": 100,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "beer",
+     "count": 82,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "hot_drinks",
+     "count": 66,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "alcohol",
+     "count": 60,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "juice",
+     "count": 52,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "tea",
+     "count": 49,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "raw_milk",
+     "count": 21,
+     "documented": true,
+     "description": "A machine vending raw milk."
+    }
+   ]
+  },
+  {
+   "name": "Food & snacks",
+   "emoji": "🥪",
+   "values": [
+    {
+     "value": "food",
+     "count": 10698,
+     "documented": true,
+     "description": "A machine vending food"
+    },
+    {
+     "value": "sweets",
+     "count": 9022,
+     "documented": true,
+     "description": "A machine vending sweets"
+    },
+    {
+     "value": "eggs",
+     "count": 2057,
+     "documented": true,
+     "description": "A machine vendings eggs or boxes of eggs"
+    },
+    {
+     "value": "bread",
+     "count": 1962,
+     "documented": true,
+     "description": "A machine vending bread"
+    },
+    {
+     "value": "pizza",
+     "count": 1792,
+     "documented": true,
+     "description": "Pizza vending machine"
+    },
+    {
+     "value": "ice_cream",
+     "count": 1413,
+     "documented": true,
+     "description": "Machine vending ice cream"
+    },
+    {
+     "value": "snacks",
+     "count": 871,
+     "documented": true,
+     "description": "A vending machine for dispensing of snacks."
+    },
+    {
+     "value": "chewing_gums",
+     "count": 817,
+     "documented": true,
+     "description": "Machine vending chewing gums"
+    },
+    {
+     "value": "meat",
+     "count": 470,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "potatoes",
+     "count": 409,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "honey",
+     "count": 389,
+     "documented": true,
+     "description": "A machine vending honey"
+    },
+    {
+     "value": "cheese",
+     "count": 344,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "rice_polishing",
+     "count": 202,
+     "documented": true,
+     "description": "Raw rice can be polished at this vending machine."
+    },
+    {
+     "value": "sausages",
+     "count": 168,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "snack",
+     "count": 142,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "vegetables",
+     "count": 132,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "noodles",
+     "count": 102,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "fruit",
+     "count": 86,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "sausage",
+     "count": 77,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "strawberries",
+     "count": 63,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "fruits",
+     "count": 52,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "pasta",
+     "count": 49,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "butter",
+     "count": 40,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "french_fries",
+     "count": 0,
+     "documented": true,
+     "description": null
+    }
+   ]
+  },
+  {
+   "name": "Tobacco & smoking",
+   "emoji": "🚬",
+   "values": [
+    {
+     "value": "cigarettes",
+     "count": 33446,
+     "documented": true,
+     "description": "A cigarette machine is a vending machine that dispenses packets of cigarettes."
+    },
+    {
+     "value": "e-cigarettes",
+     "count": 276,
+     "documented": true,
+     "description": "An e-cigarette machine is a vending machine that dispenses e-cigarettes or e-cigarette refill cartriges."
+    },
+    {
+     "value": "cbd",
+     "count": 79,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "cannabis",
+     "count": 78,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "tobacco",
+     "count": 77,
+     "documented": false,
+     "description": null
+    }
+   ]
+  },
+  {
+   "name": "Tickets, tokens & payment",
+   "emoji": "🎫",
+   "values": [
+    {
+     "value": "parking_tickets",
+     "count": 108705,
+     "documented": true,
+     "description": "A machine selling tickets for parking"
+    },
+    {
+     "value": "public_transport_tickets",
+     "count": 34676,
+     "documented": true,
+     "description": "A machine vending bus, tram, train... tickets"
+    },
+    {
+     "value": "admission_tickets",
+     "count": 576,
+     "documented": true,
+     "description": "Indicates that a vending machine is selling admission tickets to an event or establishment."
+    },
+    {
+     "value": "subscription",
+     "count": 215,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "toll",
+     "count": 201,
+     "documented": true,
+     "description": "A machine where you can pay road, bridge or other tolls."
+    },
+    {
+     "value": "telephone_vouchers",
+     "count": 183,
+     "documented": true,
+     "description": "A machine vending telephone vouchers, or offering over-the-air prepaid credit top up for mobile phones"
+    },
+    {
+     "value": "tickets",
+     "count": 168,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "ticket_validator",
+     "count": 157,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "coin_change_machine",
+     "count": 85,
+     "documented": true,
+     "description": "coin change machine"
+    },
+    {
+     "value": "subway_tokens",
+     "count": 74,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "public_transport_plans",
+     "count": 61,
+     "documented": true,
+     "description": "A machine vending public transport plans"
+    },
+    {
+     "value": "lottery",
+     "count": 59,
+     "documented": true,
+     "description": "A machine for dispensing lottery tickets."
+    },
+    {
+     "value": "sim_cards",
+     "count": 42,
+     "documented": true,
+     "description": "Machine vending SIM cards"
+    },
+    {
+     "value": "coin_rolls",
+     "count": 0,
+     "documented": true,
+     "description": "A coin roll machine is a machine that dispenses coins in the form of coin rolls."
+    }
+   ]
+  },
+  {
+   "name": "Health & hygiene",
+   "emoji": "💊",
+   "values": [
+    {
+     "value": "condoms",
+     "count": 4099,
+     "documented": true,
+     "description": "Condoms vending machine"
+    },
+    {
+     "value": "contact_lenses",
+     "count": 463,
+     "documented": true,
+     "description": "Machine vending contact lenses"
+    },
+    {
+     "value": "feminine_hygiene",
+     "count": 292,
+     "documented": true,
+     "description": "Machine vending feminine hygiene products"
+    },
+    {
+     "value": "chemist",
+     "count": 217,
+     "documented": true,
+     "description": "Machine vending chemistry or paramedical products"
+    },
+    {
+     "value": "syringes",
+     "count": 105,
+     "documented": true,
+     "description": "Needle vending machine for injecting drug users"
+    },
+    {
+     "value": "pharmacy",
+     "count": 66,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "sex_toys",
+     "count": 57,
+     "documented": true,
+     "description": "Machine vending sex toys"
+    },
+    {
+     "value": "first_aid",
+     "count": 18,
+     "documented": true,
+     "description": "Machine vending first aid products"
+    }
+   ]
+  },
+  {
+   "name": "Pets, animals & fishing",
+   "emoji": "🐕",
+   "values": [
+    {
+     "value": "excrement_bags",
+     "count": 67430,
+     "documented": true,
+     "description": "Dispensing bags for picking up dog poop"
+    },
+    {
+     "value": "animal_feed",
+     "count": 432,
+     "documented": true,
+     "description": "Vending machine selling food for animals"
+    },
+    {
+     "value": "pet",
+     "count": 64,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "fishing_bait",
+     "count": 47,
+     "documented": true,
+     "description": "Machine vending fishing bait (live or frozen)"
+    },
+    {
+     "value": "pet_food",
+     "count": 24,
+     "documented": true,
+     "description": "Machine vending food for domestic pets"
+    },
+    {
+     "value": "fishing_tackle",
+     "count": 13,
+     "documented": true,
+     "description": "Machine vending fishing equipment (hooks, lines, sinkers, lures...)"
+    }
+   ]
+  },
+  {
+   "name": "Vehicles, fuel & bikes",
+   "emoji": "⛽",
+   "values": [
+    {
+     "value": "fuel",
+     "count": 14154,
+     "documented": true,
+     "description": "A vending machine that dispenses fuel, also known as a gas pump."
+    },
+    {
+     "value": "bicycle_tube",
+     "count": 1487,
+     "documented": true,
+     "description": "A machine to vend inner tubes for cycles"
+    },
+    {
+     "value": "gas",
+     "count": 785,
+     "documented": true,
+     "description": "Automatic sale of bottled gas"
+    },
+    {
+     "value": "battery_swap",
+     "count": 156,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "gas_bottles",
+     "count": 16,
+     "documented": true,
+     "description": "Automated sale of bottled gas. – It is proposed to use vending=gas instead."
+    }
+   ]
+  },
+  {
+   "name": "Services, returns & lockers",
+   "emoji": "♻️",
+   "values": [
+    {
+     "value": "bottle_return",
+     "count": 4215,
+     "documented": true,
+     "description": "Reverse vending machine for returning empty bottles"
+    },
+    {
+     "value": "newspapers",
+     "count": 3928,
+     "documented": true,
+     "description": "Machine vending newspapers"
+    },
+    {
+     "value": "ice_cubes",
+     "count": 1076,
+     "documented": true,
+     "description": "Machine vending ice cubes"
+    },
+    {
+     "value": "stamps",
+     "count": 684,
+     "documented": true,
+     "description": "A machine vending postage stamps"
+    },
+    {
+     "value": "parcel_pickup",
+     "count": 386,
+     "documented": true,
+     "description": null
+    },
+    {
+     "value": "locker",
+     "count": 119,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "key",
+     "count": 108,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "photos",
+     "count": 99,
+     "documented": true,
+     "description": null
+    },
+    {
+     "value": "ice",
+     "count": 92,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "parcel_mail_in",
+     "count": 91,
+     "documented": true,
+     "description": null
+    },
+    {
+     "value": "laundry",
+     "count": 54,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "trash_bag",
+     "count": 47,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "laundry_detergent",
+     "count": 20,
+     "documented": true,
+     "description": "Machine vending laundry detergent"
+    },
+    {
+     "value": "photo",
+     "count": 11,
+     "documented": true,
+     "description": null
+    }
+   ]
+  },
+  {
+   "name": "Goods & novelties",
+   "emoji": "🎁",
+   "values": [
+    {
+     "value": "movies",
+     "count": 1314,
+     "documented": true,
+     "description": "Indicates that a vending machine is selling movies on physical media."
+    },
+    {
+     "value": "elongated_coin",
+     "count": 1152,
+     "documented": true,
+     "description": "Machine for stamping souvenir coins."
+    },
+    {
+     "value": "toys",
+     "count": 657,
+     "documented": true,
+     "description": "Machine vending toys"
+    },
+    {
+     "value": "flowers",
+     "count": 651,
+     "documented": true,
+     "description": "Machine vending flowers"
+    },
+    {
+     "value": "electronics",
+     "count": 315,
+     "documented": true,
+     "description": "Machine selling electronic products"
+    },
+    {
+     "value": "candles",
+     "count": 296,
+     "documented": true,
+     "description": "Candle Vending Machine (often religious)"
+    },
+    {
+     "value": "art",
+     "count": 140,
+     "documented": true,
+     "description": "A vending machine that sells art."
+    },
+    {
+     "value": "books",
+     "count": 54,
+     "documented": true,
+     "description": "Vending machine selling books"
+    },
+    {
+     "value": "flower_seeds",
+     "count": 51,
+     "documented": true,
+     "description": "vending machine for flower seeds"
+    },
+    {
+     "value": "coin",
+     "count": 43,
+     "documented": false,
+     "description": null
+    },
+    {
+     "value": "wood_pellet",
+     "count": 28,
+     "documented": true,
+     "description": "A machine vending wood pellets"
+    },
+    {
+     "value": "umbrellas",
+     "count": 0,
+     "documented": true,
+     "description": "Machine vending umbrellas"
+    },
+    {
+     "value": "clothes",
+     "count": 0,
+     "documented": true,
+     "description": "A vending machine for clothes."
+    },
+    {
+     "value": "swimming_items",
+     "count": 0,
+     "documented": true,
+     "description": "A vending machine for swimming items."
+    },
+    {
+     "value": "ink_cartridges",
+     "count": 0,
+     "documented": true,
+     "description": "Machine vending ink cartridges"
+    }
+   ]
+  }
+ ],
+ "other": [
+  {
+   "value": "jam",
+   "count": 39
+  },
+  {
+   "value": "drink",
+   "count": 36
+  },
+  {
+   "value": "apples",
+   "count": 36
+  },
+  {
+   "value": "vapes",
+   "count": 36
+  },
+  {
+   "value": "animal_food",
+   "count": 35
+  },
+  {
+   "value": "maps",
+   "count": 34
+  },
+  {
+   "value": "vouchers",
+   "count": 34
+  },
+  {
+   "value": "gifts",
+   "count": 32
+  },
+  {
+   "value": "coins",
+   "count": 31
+  },
+  {
+   "value": "soup",
+   "count": 29
+  },
+  {
+   "value": "sports_equipment",
+   "count": 28
+  },
+  {
+   "value": "dairy",
+   "count": 28
+  },
+  {
+   "value": "yoghurt",
+   "count": 28
+  },
+  {
+   "value": "drinking_water",
+   "count": 27
+  },
+  {
+   "value": "potato",
+   "count": 27
+  },
+  {
+   "value": "softdrinks",
+   "count": 27
+  },
+  {
+   "value": "grave_candles",
+   "count": 26
+  },
+  {
+   "value": "secret_packs",
+   "count": 26
+  },
+  {
+   "value": "firewood",
+   "count": 26
+  },
+  {
+   "value": "car_wash",
+   "count": 26
+  },
+  {
+   "value": "ski_pass",
+   "count": 26
+  },
+  {
+   "value": "yogurt",
+   "count": 26
+  },
+  {
+   "value": "wurst",
+   "count": 26
+  },
+  {
+   "value": "trading_cards",
+   "count": 25
+  },
+  {
+   "value": "marbles",
+   "count": 24
+  },
+  {
+   "value": "fleisch",
+   "count": 24
+  },
+  {
+   "value": "electricity",
+   "count": 23
+  },
+  {
+   "value": "vegetable",
+   "count": 23
+  },
+  {
+   "value": "cake",
+   "count": 23
+  },
+  {
+   "value": "honig",
+   "count": 23
+  },
+  {
+   "value": "cotton_candy",
+   "count": 22
+  },
+  {
+   "value": "propane",
+   "count": 22
+  },
+  {
+   "value": "drugs",
+   "count": 22
+  },
+  {
+   "value": "dvd",
+   "count": 22
+  },
+  {
+   "value": "souvenir_coins",
+   "count": 21
+  },
+  {
+   "value": "ticket",
+   "count": 21
+  },
+  {
+   "value": "strawberry",
+   "count": 21
+  },
+  {
+   "value": "tokens",
+   "count": 20
+  },
+  {
+   "value": "change",
+   "count": 20
+  },
+  {
+   "value": "cosmetics",
+   "count": 20
+  },
+  {
+   "value": "tampons",
+   "count": 20
+  },
+  {
+   "value": "chocolate",
+   "count": 19
+  },
+  {
+   "value": "egg",
+   "count": 19
+  },
+  {
+   "value": "kartoffeln",
+   "count": 19
+  },
+  {
+   "value": "baggage_carts",
+   "count": 18
+  },
+  {
+   "value": "rice",
+   "count": 18
+  },
+  {
+   "value": "dog_excrement",
+   "count": 17
+  },
+  {
+   "value": "farm_products",
+   "count": 17
+  },
+  {
+   "value": "sake",
+   "count": 17
+  },
+  {
+   "value": "onions",
+   "count": 17
+  },
+  {
+   "value": "chips",
+   "count": 17
+  },
+  {
+   "value": "sun_cream",
+   "count": 16
+  },
+  {
+   "value": "chargers",
+   "count": 16
+  },
+  {
+   "value": "chewing_gum",
+   "count": 16
+  },
+  {
+   "value": "student_card_validation",
+   "count": 15
+  },
+  {
+   "value": "frozen_food",
+   "count": 15
+  },
+  {
+   "value": "parcel_locker",
+   "count": 15
+  },
+  {
+   "value": "fish",
+   "count": 15
+  },
+  {
+   "value": "vape",
+   "count": 15
+  },
+  {
+   "value": "oil",
+   "count": 15
+  },
+  {
+   "value": "nudeln",
+   "count": 15
+  },
+  {
+   "value": "cookies",
+   "count": 15
+  },
+  {
+   "value": "payments_mobile",
+   "count": 14
+  },
+  {
+   "value": "trash_bags",
+   "count": 14
+  },
+  {
+   "value": "windshield_washer_fluid",
+   "count": 14
+  },
+  {
+   "value": "golf_balls",
+   "count": 14
+  },
+  {
+   "value": "medicine",
+   "count": 14
+  },
+  {
+   "value": "hot_chocolate",
+   "count": 14
+  },
+  {
+   "value": "flour",
+   "count": 14
+  },
+  {
+   "value": "bibite",
+   "count": 13
+  },
+  {
+   "value": "concrete",
+   "count": 13
+  },
+  {
+   "value": "booze",
+   "count": 13
+  },
+  {
+   "value": "air",
+   "count": 13
+  },
+  {
+   "value": "sandwich",
+   "count": 13
+  },
+  {
+   "value": "soda",
+   "count": 13
+  },
+  {
+   "value": "icecream",
+   "count": 13
+  },
+  {
+   "value": "deicer",
+   "count": 12
+  },
+  {
+   "value": "book_return",
+   "count": 12
+  },
+  {
+   "value": "seafood",
+   "count": 12
+  },
+  {
+   "value": "cold_drinks",
+   "count": 12
+  },
+  {
+   "value": "fondue",
+   "count": 12
+  },
+  {
+   "value": "bbq",
+   "count": 12
+  },
+  {
+   "value": "bakery",
+   "count": 11
+  },
+  {
+   "value": "golf_range_balls",
+   "count": 11
+  },
+  {
+   "value": "map",
+   "count": 11
+  },
+  {
+   "value": "dog_wash",
+   "count": 11
+  },
+  {
+   "value": "baguette",
+   "count": 11
+  },
+  {
+   "value": "souvenirs",
+   "count": 11
+  },
+  {
+   "value": "dairy_products",
+   "count": 11
+  },
+  {
+   "value": "decoration",
+   "count": 11
+  },
+  {
+   "value": "check-in",
+   "count": 10
+  },
+  {
+   "value": "customer_returns",
+   "count": 10
+  },
+  {
+   "value": "lottery_tickets",
+   "count": 10
+  },
+  {
+   "value": "power_banks",
+   "count": 10
+  },
+  {
+   "value": "seeds",
+   "count": 10
+  },
+  {
+   "value": "wood",
+   "count": 10
+  },
+  {
+   "value": "tools",
+   "count": 10
+  },
+  {
+   "value": "foods",
+   "count": 10
+  },
+  {
+   "value": "diesel",
+   "count": 10
+  },
+  {
+   "value": "pastry",
+   "count": 10
+  },
+  {
+   "value": "energydrinks",
+   "count": 10
+  },
+  {
+   "value": "liquor",
+   "count": 10
+  },
+  {
+   "value": "vêtement",
+   "count": 10
+  },
+  {
+   "value": "marmelade",
+   "count": 10
+  },
+  {
+   "value": "grillfleisch",
+   "count": 10
+  }
+ ]
+}
