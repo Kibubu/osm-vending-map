@@ -32,6 +32,7 @@
     },
   };
   const APP_NAME = 'osm-vending-map';
+  const tr = (key, fallback) => (window.I18N ? window.I18N.t(key) : fallback);
   const APP_VERSION = '1.1';
   const HASHTAG = '#osm-vending-map';
   const SCOPE = 'read_prefs write_api';
@@ -86,7 +87,7 @@
 
   /** Leaves the page to log in at OSM. `payload` is handed back by resume() after the round trip. */
   async function login(payload) {
-    if (!isConfigured()) throw new Error('Direct upload is not configured (missing OAuth Client ID).');
+    if (!isConfigured()) throw new Error(tr('osm.notConfigured', 'Direct upload is not configured (missing OAuth Client ID).'));
     const verifier = randomString(48);
     const state = randomString(16);
     const params = new URLSearchParams({
@@ -123,9 +124,9 @@
     let pending, result;
     try { pending = JSON.parse(rawPending); result = JSON.parse(rawResult); } catch { return null; }
     const fail = (msg) => { const e = new Error(msg); e.payload = pending.payload; throw e; };
-    if (result.error) fail(result.error === 'access_denied' ? 'Login was cancelled on OpenStreetMap.' : `Login failed: ${result.error}`);
-    if (!result.code || result.state !== pending.state) fail('Login failed: state mismatch — please try again.');
-    if (Date.now() - pending.t > 30 * 60 * 1000) fail('Login took too long — please try again.');
+    if (result.error) fail(result.error === 'access_denied' ? tr('osm.loginCancelled', 'Login was cancelled on OpenStreetMap.') : `Login failed: ${result.error}`);
+    if (!result.code || result.state !== pending.state) fail(tr('osm.stateMismatch', 'Login failed: state mismatch — please try again.'));
+    if (Date.now() - pending.t > 30 * 60 * 1000) fail(tr('osm.tooLong', 'Login took too long — please try again.'));
 
     const res = await fetch(`${cfg.web}/oauth2/token`, {
       method: 'POST',
@@ -167,7 +168,7 @@
     if (res.status === 401) {
       store.del(TOKEN_KEY);
       user = null;
-      throw new Error('Your OSM login expired — please log in again.');
+      throw new Error(tr('osm.expired', 'Your OSM login expired — please log in again.'));
     }
     if (!res.ok) throw new Error(`OSM API error ${res.status}: ${(await res.text()).slice(0, 200)}`);
     return res;

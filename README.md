@@ -8,6 +8,17 @@ A static map of **vending machines** (`amenity=vending_machine`) from [OpenStree
 
 Features: marker clustering, filter panel with 9 groups covering the `vending=*` values used worldwide (see [docs/vending-values.md](docs/vending-values.md); synonyms like `snack`/`snacks` are merged, `drinks;sweets` counts for both), per-type colored emoji markers, popups with operator/brand/payment/opening hours/level/note and *View/Edit on OSM* links, "Locate me", data timestamp + total count, mobile layout with a collapsible panel.
 
+## Languages
+
+The interface is available in 🇬🇧 English, 🇩🇪 Deutsch, 🇫🇷 Français, 🇪🇸 Español, 🇮🇹 Italiano and 🇳🇱 Nederlands.
+
+- On the first visit the site uses the first of the browser's preferred languages that it supports, falling back to English.
+- The flag button (top left, under ＋) switches language. The browser's own languages are listed first, and the choice is remembered.
+- Category names, the add form, popups (including vending types and payment methods), status messages, number and date formats are all translated.
+- OSM tag keys and values, changeset comments and note texts stay **English** on purpose, because they are shared with mappers worldwide.
+
+To add a language, copy the `en` block in `i18n.js`, translate the values and add an entry to `LANGS` (flag and native name).
+
 ## Shareable links
 
 The address bar always reflects what you see, OSM-style, so you can copy it at any time:
@@ -65,6 +76,7 @@ Until a Client ID is set, the upload button is disabled and visitors get the not
 | Path | Purpose |
 |---|---|
 | `index.html`, `style.css`, `app.js` | The site |
+| `i18n.js` | Translations and language detection/picker |
 | `osm.js` | OSM login (OAuth 2 PKCE), node upload, notes, nearby-duplicate check |
 | `land.html` | OAuth redirect target that hands the login code back to the map |
 | `data/vending.geojson` | Prebuilt data (one feature per line for readable diffs) |

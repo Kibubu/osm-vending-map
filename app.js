@@ -3,52 +3,57 @@
   'use strict';
 
   const DATA_URL = 'data/vending.geojson';
+  const { t } = I18N;
+  const fmt = (n) => I18N.fmtNum(n);
 
   // Groups of OSM vending=* values (see docs/vending-values.md for the worldwide list).
   // Order matters for the legend; a machine's marker uses the group of its first vending value.
   const TYPES = [
-    { key: 'drinks', label: 'Drinks', emoji: '🥤', color: '#1f77b4',
+    { key: 'drinks', emoji: '🥤', color: '#1f77b4',
       values: ["drinks", "coffee", "water", "milk", "beverages", "wine", "beer", "hot_drinks", "alcohol", "juice", "tea", "raw_milk"] },
-    { key: 'food', label: 'Food & snacks', emoji: '🥪', color: '#2ca02c',
+    { key: 'food', emoji: '🥪', color: '#2ca02c',
       values: ["food", "sweets", "eggs", "bread", "pizza", "ice_cream", "snacks", "chewing_gums", "meat", "potatoes", "honey", "cheese", "rice_polishing", "sausages", "snack", "vegetables", "noodles", "fruit", "sausage", "strawberries", "fruits", "pasta", "butter", "french_fries"] },
-    { key: 'tobacco', label: 'Tobacco', emoji: '🚬', color: '#7f4f24',
+    { key: 'tobacco', emoji: '🚬', color: '#7f4f24',
       values: ["cigarettes", "e-cigarettes", "cbd", "cannabis", "tobacco"] },
-    { key: 'tickets', label: 'Tickets & payment', emoji: '🎫', color: '#3949ab',
+    { key: 'tickets', emoji: '🎫', color: '#3949ab',
       values: ["parking_tickets", "public_transport_tickets", "admission_tickets", "subscription", "toll", "telephone_vouchers", "tickets", "ticket_validator", "coin_change_machine", "subway_tokens", "public_transport_plans", "lottery", "sim_cards", "coin_rolls"] },
-    { key: 'health', label: 'Health & hygiene', emoji: '💊', color: '#d62781',
+    { key: 'health', emoji: '💊', color: '#d62781',
       values: ["condoms", "contact_lenses", "feminine_hygiene", "chemist", "syringes", "pharmacy", "sex_toys", "first_aid", "toothpaste", "toothbrushes", "toothbrushs"] },
-    { key: 'pets', label: 'Pets & animals', emoji: '🐕', color: '#8c6d00',
+    { key: 'pets', emoji: '🐕', color: '#8c6d00',
       values: ["excrement_bags", "animal_feed", "pet", "fishing_bait", "pet_food", "fishing_tackle"] },
-    { key: 'vehicles', label: 'Fuel & bikes', emoji: '⛽', color: '#c92a2a',
+    { key: 'vehicles', emoji: '⛽', color: '#c92a2a',
       values: ["fuel", "bicycle_tube", "gas", "battery_swap", "gas_bottles"] },
-    { key: 'services', label: 'Services & returns', emoji: '♻️', color: '#0b7285',
+    { key: 'services', emoji: '♻️', color: '#0b7285',
       values: ["bottle_return", "newspapers", "ice_cubes", "stamps", "parcel_pickup", "locker", "key", "photos", "ice", "parcel_mail_in", "laundry", "trash_bag", "laundry_detergent", "photo"] },
-    { key: 'goods', label: 'Goods & novelties', emoji: '🎁', color: '#7048e8',
+    { key: 'goods', emoji: '🎁', color: '#7048e8',
       values: ["movies", "elongated_coin", "toys", "flowers", "electronics", "candles", "art", "books", "flower_seeds", "coin", "wood_pellet", "umbrellas", "clothes", "swimming_items", "ink_cartridges"] },
-    { key: 'other', label: 'Other / unknown', emoji: '📦', color: '#6c757d', values: [] },
+    { key: 'other', emoji: '📦', color: '#6c757d', values: [] },
   ];
-  const TYPE_BY_KEY = Object.fromEntries(TYPES.map((t) => [t.key, t]));
+  TYPES.forEach((ty) => { Object.defineProperty(ty, 'label', { get: () => t(`type.${ty.key}`) }); });
+  const TYPE_BY_KEY = Object.fromEntries(TYPES.map((ty) => [ty.key, ty]));
   const GROUP_OF = {};
   TYPES.forEach((t) => t.values.forEach((v) => { GROUP_OF[v] = t.key; }));
 
   // Common, documented values offered as quick picks in the "add a machine" form.
   const ADD_CHOICES = [
-    ['drinks', '🥤 Drinks'], ['coffee', '☕ Coffee'], ['water', '💧 Water'], ['milk', '🥛 Milk'],
-    ['sweets', '🍫 Sweets'], ['snacks', '🥨 Snacks'], ['food', '🥪 Food'], ['eggs', '🥚 Eggs'],
-    ['bread', '🍞 Bread'], ['ice_cream', '🍦 Ice cream'], ['meat', '🥩 Meat'], ['honey', '🍯 Honey'],
-    ['cigarettes', '🚬 Cigarettes'], ['e-cigarettes', '💨 E-cigarettes'],
-    ['parking_tickets', '🅿️ Parking'], ['public_transport_tickets', '🚌 Transport tickets'],
-    ['admission_tickets', '🎟️ Admission'], ['condoms', '🩹 Condoms'], ['feminine_hygiene', '🌸 Feminine hygiene'],
-    ['excrement_bags', '🐕 Dog bags'], ['animal_feed', '🦆 Animal feed'], ['fishing_bait', '🎣 Fishing bait'],
-    ['fuel', '⛽ Fuel'], ['bicycle_tube', '🚲 Bicycle tubes'], ['bottle_return', '♻️ Bottle return'],
-    ['newspapers', '📰 Newspapers'], ['stamps', '✉️ Stamps'], ['parcel_pickup', '📦 Parcel pickup'],
-    ['toys', '🧸 Toys'], ['flowers', '💐 Flowers'],
+    ['drinks', '🥤'], ['coffee', '☕'], ['water', '💧'], ['milk', '🥛'],
+    ['sweets', '🍫'], ['snacks', '🥨'], ['food', '🥪'], ['eggs', '🥚'],
+    ['bread', '🍞'], ['ice_cream', '🍦'], ['meat', '🥩'], ['honey', '🍯'],
+    ['cigarettes', '🚬'], ['e-cigarettes', '💨'],
+    ['parking_tickets', '🅿️'], ['public_transport_tickets', '🚌'],
+    ['admission_tickets', '🎟️'], ['condoms', '🩹'], ['feminine_hygiene', '🌸'],
+    ['excrement_bags', '🐕'], ['animal_feed', '🦆'], ['fishing_bait', '🎣'],
+    ['fuel', '⛽'], ['bicycle_tube', '🚲'], ['bottle_return', '♻️'],
+    ['newspapers', '📰'], ['stamps', '✉️'], ['parcel_pickup', '📦'],
+    ['toys', '🧸'], ['flowers', '💐'],
   ];
+
 
   const $ = (id) => document.getElementById(id);
 
   // ---------- Map ----------
-  const map = L.map('map', { zoomControl: true, worldCopyJump: true }).setView([51.16, 10.45], 6);
+  const map = L.map('map', { zoomControl: false, worldCopyJump: true }).setView([51.16, 10.45], 6);
+  let zoomCtl = L.control.zoom({ zoomInTitle: t('ctl.zoomIn'), zoomOutTitle: t('ctl.zoomOut') }).addTo(map);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -95,7 +100,13 @@
   }
 
   function prettyKey(k) {
-    return k.replace(/^payment:/, '').replace(/_/g, ' ');
+    const p = k.replace(/^payment:/, '');
+    return I18N.tryT(`pay.${p}`) || p.replace(/_/g, ' ');
+  }
+  /** Human label for a raw vending value, e.g. "parking_tickets" → "Parkscheine". */
+  function itemLabel(v) {
+    const key = v.trim().toLowerCase().replace(/\s+/g, '_');
+    return I18N.tryT(`item.${key}`) || v.trim().replace(/_/g, ' ');
   }
   function prettyVal(v) {
     if (v === 'yes') return '✅';
@@ -105,28 +116,29 @@
 
   function popupHtml(props, cats) {
     const type = props.osm_type, id = props.osm_id;
-    const title = props.name || props.brand || (TYPE_BY_KEY[cats[0]] || {}).label || 'Vending machine';
+    const title = props.name || props.brand || (TYPE_BY_KEY[cats[0]] || {}).label || t('popup.title');
     const rows = [];
-    rows.push(['Type', esc(props.vending || 'unknown').replace(/;/g, ', ')]);
+    const vend = (props.vending || '').split(/[;,]/).filter((v) => v.trim());
+    rows.push([t('popup.type'), vend.length ? vend.map((v) => esc(itemLabel(v))).join(', ') : esc(t('popup.unknown'))]);
     for (const k of ['operator', 'brand', 'opening_hours', 'level', 'note']) {
-      if (props[k] != null && props[k] !== '') rows.push([k.replace('_', ' '), esc(props[k])]);
+      if (props[k] != null && props[k] !== '') rows.push([t(`popup.${k}`), esc(props[k])]);
     }
     const payments = Object.keys(props).filter((k) => k.startsWith('payment:')).sort();
     if (payments.length) {
-      rows.push(['payment', payments.map((k) => `${esc(prettyKey(k))} ${prettyVal(props[k])}`).join('<br>')]);
+      rows.push([t('popup.payment'), payments.map((k) => `${esc(prettyKey(k))} ${prettyVal(props[k])}`).join('<br>')]);
     }
     const tags = cats.map((c) => {
-      const t = TYPE_BY_KEY[c];
-      return `<span class="tag" style="background:${t.color}">${t.emoji} ${esc(t.label)}</span>`;
+      const ty = TYPE_BY_KEY[c];
+      return `<span class="tag" style="background:${ty.color}">${ty.emoji} ${esc(ty.label)}</span>`;
     }).join('');
     return `<div class="vm-popup">
       <h3>${esc(title)}</h3>
       <div class="types">${tags}</div>
       <table>${rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${v}</td></tr>`).join('')}</table>
       <div class="links">
-        <a href="https://www.openstreetmap.org/${type}/${id}" target="_blank" rel="noopener">View on OSM</a>
-        <a href="https://www.openstreetmap.org/edit?${type}=${id}" target="_blank" rel="noopener">Edit on OSM</a>
-        <a href="#" class="share-link" data-id="${type}/${id}">🔗 Share</a>
+        <a href="https://www.openstreetmap.org/${type}/${id}" target="_blank" rel="noopener">${esc(t('popup.view'))}</a>
+        <a href="https://www.openstreetmap.org/edit?${type}=${id}" target="_blank" rel="noopener">${esc(t('popup.edit'))}</a>
+        <a href="#" class="share-link" data-id="${type}/${id}">${esc(t('popup.share'))}</a>
       </div>
     </div>`;
   }
@@ -144,11 +156,11 @@
   }
   function saveHidden() {
     try {
-      localStorage.setItem(FILTER_KEY, JSON.stringify(TYPES.map((t) => t.key).filter((k) => !active.has(k))));
+      localStorage.setItem(FILTER_KEY, JSON.stringify(TYPES.map((ty) => ty.key).filter((k) => !active.has(k))));
     } catch { /* storage unavailable (private mode etc.) — filter just won't be remembered */ }
   }
   const hiddenAtStart = new Set(loadHidden());
-  const active = new Set(TYPES.map((t) => t.key).filter((k) => !hiddenAtStart.has(k)));
+  const active = new Set(TYPES.map((ty) => ty.key).filter((k) => !hiddenAtStart.has(k)));
 
   function applyFilter() {
     const visible = entries.filter((e) => e.cats.some((c) => active.has(c))).map((e) => e.marker);
@@ -161,21 +173,21 @@
     const n = visibleCount != null ? visibleCount
       : entries.filter((e) => e.cats.some((c) => active.has(c))).length;
     $('count').textContent = n === entries.length
-      ? `${entries.length.toLocaleString()} machines`
-      : `${n.toLocaleString()} of ${entries.length.toLocaleString()} machines`;
+      ? t('count.all', { n: fmt(entries.length) })
+      : t('count.some', { n: fmt(n), total: fmt(entries.length) });
   }
 
   function buildFilters(counts) {
     const ul = $('filters');
     ul.innerHTML = '';
-    for (const t of TYPES) {
+    for (const ty of TYPES) {
       const li = document.createElement('li');
-      if (!counts[t.key]) li.className = 'empty';
+      if (!counts[ty.key]) li.className = 'empty';
       li.innerHTML = `<label>
-          <input type="checkbox" value="${t.key}" ${active.has(t.key) ? 'checked' : ''}>
-          <span class="swatch" style="background:${t.color}">${t.emoji}</span>
-          <span class="lbl">${esc(t.label)}</span>
-          <span class="num">${(counts[t.key] || 0).toLocaleString()}</span>
+          <input type="checkbox" value="${ty.key}" ${active.has(ty.key) ? 'checked' : ''}>
+          <span class="swatch" style="background:${ty.color}">${ty.emoji}</span>
+          <span class="lbl">${esc(ty.label)}</span>
+          <span class="num">${fmt(counts[ty.key] || 0)}</span>
         </label>`;
       ul.appendChild(li);
     }
@@ -190,7 +202,7 @@
 
   function setAll(on) {
     active.clear();
-    if (on) TYPES.forEach((t) => active.add(t.key));
+    if (on) TYPES.forEach((ty) => active.add(ty.key));
     document.querySelectorAll('#filters input').forEach((cb) => { cb.checked = on; });
     saveHidden();
     applyFilter();
@@ -217,8 +229,10 @@
       const wrap = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
       const btn = L.DomUtil.create('button', 'locate-btn', wrap);
       btn.type = 'button';
-      btn.title = 'Locate me';
-      btn.setAttribute('aria-label', 'Locate me');
+      btn.title = t('ctl.locate');
+      btn.setAttribute('aria-label', t('ctl.locate'));
+      btn.dataset.i18nTitle = 'ctl.locate';
+      btn.dataset.i18nAria = 'ctl.locate';
       btn.textContent = '◎';
       L.DomEvent.disableClickPropagation(wrap);
       L.DomEvent.on(btn, 'click', () => locate(btn));
@@ -229,7 +243,7 @@
 
   let meLayer = null;
   function locate(btn) {
-    if (!('geolocation' in navigator)) { showError('Geolocation is not supported by this browser.', false); return; }
+    if (!('geolocation' in navigator)) { showError(t('geo.unsupported'), false); return; }
     btn.classList.add('busy');
     navigator.geolocation.getCurrentPosition((pos) => {
       btn.classList.remove('busy');
@@ -238,12 +252,12 @@
       meLayer = L.layerGroup([
         L.circle(ll, { radius: pos.coords.accuracy, weight: 1, color: '#0b6bcb', fillOpacity: 0.1 }),
         L.circleMarker(ll, { radius: 7, weight: 2, color: '#fff', fillColor: '#0b6bcb', fillOpacity: 1 })
-          .bindTooltip('You are here'),
+          .bindTooltip(t('geo.here')),
       ]).addTo(map);
       map.flyTo(ll, Math.max(map.getZoom(), 15));
     }, (err) => {
       btn.classList.remove('busy');
-      showError(`Could not get your location: ${err.message || 'permission denied'}.`, false);
+      showError(t('geo.failed', { msg: err.code === 1 ? t('geo.denied') : (err.message || t('geo.denied')) }), false);
     }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
   }
 
@@ -260,8 +274,10 @@
       const wrap = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
       addBtn = L.DomUtil.create('button', 'locate-btn add-btn', wrap);
       addBtn.type = 'button';
-      addBtn.title = 'Add a missing vending machine';
-      addBtn.setAttribute('aria-label', 'Add a missing vending machine');
+      addBtn.title = t('ctl.add');
+      addBtn.setAttribute('aria-label', t('ctl.add'));
+      addBtn.dataset.i18nTitle = 'ctl.add';
+      addBtn.dataset.i18nAria = 'ctl.add';
       addBtn.setAttribute('aria-pressed', 'false');
       addBtn.textContent = '＋';
       L.DomEvent.disableClickPropagation(wrap);
@@ -270,6 +286,65 @@
     },
   });
   map.addControl(new AddControl());
+
+  // ---------- Language picker (flag button) ----------
+  const LangControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd() {
+      const wrap = L.DomUtil.create('div', 'leaflet-bar leaflet-control lang-ctl');
+      const btn = L.DomUtil.create('button', 'locate-btn lang-btn', wrap);
+      btn.type = 'button';
+      btn.setAttribute('aria-haspopup', 'listbox');
+      btn.setAttribute('aria-expanded', 'false');
+      const menu = L.DomUtil.create('ul', 'lang-menu', wrap);
+      menu.setAttribute('role', 'listbox');
+      menu.hidden = true;
+      const render = () => {
+        btn.textContent = I18N.info.flag;
+        btn.title = `${t('ctl.lang')}: ${I18N.info.name}`;
+        btn.setAttribute('aria-label', btn.title);
+        menu.innerHTML = I18N.ordered().map((l) =>
+          `<li role="option" aria-selected="${l.code === I18N.lang}" data-code="${l.code}" tabindex="0">` +
+          `<span class="flag">${l.flag}</span><span>${esc(l.name)}</span>${l.code === I18N.lang ? '<span class="tick">✓</span>' : ''}</li>`).join('');
+      };
+      const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+      btn.addEventListener('click', () => {
+        menu.hidden = !menu.hidden;
+        btn.setAttribute('aria-expanded', String(!menu.hidden));
+      });
+      const choose = (li) => { if (li) { I18N.set(li.dataset.code); close(); } };
+      // Stop the click here: the menu is re-rendered while handling it, which would otherwise
+      // let Leaflet treat it as a map click (closing popups / dropping an "add" pin).
+      menu.addEventListener('click', (e) => { e.stopPropagation(); choose(e.target.closest('li')); });
+      menu.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(e.target.closest('li')); } });
+      document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) close(); });
+      I18N.onChange(render);
+      render();
+      L.DomEvent.disableClickPropagation(wrap);
+      L.DomEvent.disableScrollPropagation(wrap);
+      return wrap;
+    },
+  });
+  map.addControl(new LangControl());
+
+  /** Re-renders everything language-dependent after the visitor switches language. */
+  I18N.onChange(() => {
+    map.removeControl(zoomCtl);
+    zoomCtl = L.control.zoom({ zoomInTitle: t('ctl.zoomIn'), zoomOutTitle: t('ctl.zoomOut') });
+    map.addControl(zoomCtl);
+    // keep the zoom buttons at the top of the left column
+    const corner = map.getContainer().querySelector('.leaflet-top.leaflet-left');
+    corner.insertBefore(zoomCtl.getContainer(), corner.firstChild);
+    buildFilters(counts);
+    updateCountText();
+    renderStamp();
+    setLiveStatus('');
+    // Machine popups are rebuilt on open; reopen the selected one so it shows the new language.
+    const sel = selectedId && entryById.get(selectedId);
+    if (sel && sel.marker.isPopupOpen()) { sel.marker.closePopup(); sel.marker.openPopup(); }
+    // A half-filled "add" form keeps its values: rebuild it in the new language.
+    if (draft && draft.isPopupOpen() && draft._form) draft._form.relocalize();
+  });
 
   const hint = $('add-hint');
   $('add-cancel').addEventListener('click', () => { setAddMode(false); removeDraft(); });
@@ -304,6 +379,7 @@
       icon: L.divIcon({ className: 'vm-icon', html: '<div class="vm-pin draft-pin">＋</div>', iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16] }),
     }).addTo(map);
     const form = buildAddForm();
+    draft._form = form;
     draft.bindPopup(form.el, {
       maxWidth: Math.min(300, window.innerWidth - 100),
       minWidth: Math.min(260, window.innerWidth - 100),
@@ -321,66 +397,63 @@
     return form;
   }
 
-  const PAYMENTS = [
-    ['coins', 'Coins'], ['notes', 'Notes'], ['debit_cards', 'Debit card'],
-    ['credit_cards', 'Credit card'], ['contactless', 'Contactless'], ['app', 'App'],
-  ];
+  const PAYMENTS = ['coins', 'notes', 'debit_cards', 'credit_cards', 'contactless', 'app'];
 
   function buildAddForm() {
     const el = document.createElement('div');
     el.className = 'vm-popup add-form';
     el.innerHTML = `
       <form class="step step-edit" novalidate>
-        <h3>Add a vending machine</h3>
-        <p class="muted">Drag the pin to the exact spot. <span class="coords"></span></p>
-        <fieldset class="type-chips"><legend>What does it sell? <span class="req">*</span></legend>
-          ${ADD_CHOICES.map(([v, label]) =>
-            `<label class="chip"><input type="checkbox" name="vending" value="${v}"><span>${esc(label)}</span></label>`).join('')}
-          <input type="text" name="vending_other" placeholder="Other (e.g. potatoes, cheese)" maxlength="80">
+        <h3>${esc(t('form.title'))}</h3>
+        <p class="muted">${esc(t('form.drag'))} <span class="coords"></span></p>
+        <fieldset class="type-chips"><legend>${esc(t('form.sells'))} <span class="req">*</span></legend>
+          ${ADD_CHOICES.map(([v, emoji]) =>
+            `<label class="chip"><input type="checkbox" name="vending" value="${v}"><span>${emoji} ${esc(t(`item.${v}`))}</span></label>`).join('')}
+          <input type="text" name="vending_other" placeholder="${esc(t('form.otherPh'))}" maxlength="80">
         </fieldset>
         <div class="grid2">
-          <label class="field">Operator<input type="text" name="operator" maxlength="120" placeholder="e.g. Tabakwaren Union"></label>
-          <label class="field">Brand<input type="text" name="brand" maxlength="120" placeholder="e.g. Selecta"></label>
+          <label class="field">${esc(t('form.operator'))}<input type="text" name="operator" maxlength="120" placeholder="${esc(t('form.operatorPh'))}"></label>
+          <label class="field">${esc(t('form.brand'))}<input type="text" name="brand" maxlength="120" placeholder="${esc(t('form.brandPh'))}"></label>
         </div>
-        <label class="field">Name <span class="muted">(only if signposted)</span><input type="text" name="name" maxlength="120"></label>
-        <fieldset class="type-chips"><legend>Payment</legend>
-          ${PAYMENTS.map(([v, label]) =>
-            `<label class="chip"><input type="checkbox" name="payment" value="${v}"><span>${esc(label)}</span></label>`).join('')}
+        <label class="field">${esc(t('form.name'))} <span class="muted">${esc(t('form.nameHint'))}</span><input type="text" name="name" maxlength="120"></label>
+        <fieldset class="type-chips"><legend>${esc(t('form.payment'))}</legend>
+          ${PAYMENTS.map((v) =>
+            `<label class="chip"><input type="checkbox" name="payment" value="${v}"><span>${esc(t(`pay.${v}`))}</span></label>`).join('')}
         </fieldset>
         <div class="grid2">
-          <label class="field">Opening hours
-            <input type="text" name="opening_hours" maxlength="120" placeholder="Mo-Sa 06:00-22:00">
+          <label class="field">${esc(t('form.hours'))}
+            <input type="text" name="opening_hours" maxlength="120" placeholder="${esc(t('form.hoursPh'))}">
             <span class="inline"><input type="checkbox" name="always"> 24/7</span>
           </label>
-          <label class="field">Level <span class="muted">(indoors)</span><input type="text" name="level" maxlength="10" placeholder="0, -1, 1…"></label>
+          <label class="field">${esc(t('form.level'))} <span class="muted">${esc(t('form.levelHint'))}</span><input type="text" name="level" maxlength="10" placeholder="${esc(t('form.levelPh'))}"></label>
         </div>
-        <label class="field">Note for mappers <span class="muted">(optional)</span>
-          <textarea name="note" rows="2" maxlength="255" placeholder="e.g. inside the station hall, next to the ticket office"></textarea>
+        <label class="field">${esc(t('form.note'))} <span class="muted">${esc(t('form.optional'))}</span>
+          <textarea name="note" rows="2" maxlength="255" placeholder="${esc(t('form.notePh'))}"></textarea>
         </label>
         <div class="add-actions">
-          <button type="submit" class="primary">Review &amp; add to OSM</button>
-          <button type="button" class="secondary send-note">No OSM account? Send as a note</button>
+          <button type="submit" class="primary">${esc(t('form.review'))}</button>
+          <button type="button" class="secondary send-note">${esc(t('form.sendNote'))}</button>
         </div>
-        <p class="muted small other-editors">Or open it in
+        <p class="muted small other-editors">${esc(t('form.orOpen'))}
           <a class="editor-link" target="_blank" rel="noopener">iD</a> ·
-          <a class="josm-link" target="_blank" rel="noopener" title="Needs JOSM running with Remote Control enabled">JOSM (prefilled)</a></p>
+          <a class="josm-link" target="_blank" rel="noopener" title="${esc(t('form.josmTitle'))}">${esc(t('form.josm'))}</a></p>
         <p class="status" role="status" hidden></p>
       </form>
 
       <div class="step step-review" hidden>
-        <h3>Check before upload</h3>
-        <p class="muted">A new node will be created at <span class="coords"></span> with these tags:</p>
+        <h3>${esc(t('review.title'))}</h3>
+        <p class="muted review-intro"></p>
         <table class="tag-table"></table>
         <div class="dupes" hidden></div>
         <div class="auth-box"></div>
         <div class="add-actions">
-          <button type="button" class="primary upload">Upload to OpenStreetMap</button>
+          <button type="button" class="primary upload">${esc(t('review.upload'))}</button>
           <div class="btn-row">
-            <button type="button" class="secondary back">✏️ Edit</button>
-            <button type="button" class="secondary cancel">✕ Cancel</button>
+            <button type="button" class="secondary back">${esc(t('review.edit'))}</button>
+            <button type="button" class="secondary cancel">${esc(t('review.cancel'))}</button>
           </div>
         </div>
-        <p class="muted small">Uploaded under your own OSM account with the changeset comment and hashtag ${esc(OSMClient.hashtag)}. Only add machines you have seen yourself.</p>
+        <p class="muted small">${esc(t('review.disclaimer', { tag: OSMClient.hashtag }))}</p>
         <p class="status" role="status" hidden></p>
       </div>
 
@@ -426,7 +499,9 @@
 
     function updateLinks() {
       const { lat, lng } = draft.getLatLng();
-      el.querySelectorAll('.coords').forEach((c) => { c.textContent = `(${lat.toFixed(5)}, ${lng.toFixed(5)})`; });
+      const coords = `(${lat.toFixed(5)}, ${lng.toFixed(5)})`;
+      el.querySelectorAll('.coords').forEach((c) => { c.textContent = coords; });
+      q('.review-intro').textContent = t('review.intro', { coords });
       const tags = collectTags();
       // iD cannot take tags via URL, but it can limit the preset list and prefill the changeset.
       const presets = ['amenity/vending_machine', ...(tags.vending || '').split(';').filter(Boolean).map((v) => `amenity/vending_machine/${v}`)];
@@ -454,8 +529,8 @@
     }
 
     function validate(tags) {
-      if (!tags.vending) return 'Please pick at least one thing it sells.';
-      if (tags.opening_hours && tags.opening_hours.length > 255) return 'Opening hours are too long.';
+      if (!tags.vending) return t('form.pickOne');
+      if (tags.opening_hours && tags.opening_hours.length > 255) return t('form.hoursLong');
       return '';
     }
 
@@ -473,13 +548,14 @@
       const { lat, lng } = draft.getLatLng();
       const btn = q('.send-note');
       btn.disabled = true;
-      setStatus(form, 'Sending note…');
+      setStatus(form, esc(t('form.sendingNote')));
       try {
         const note = await OSMClient.createNote(lat, lng, noteText(tags));
-        finish(`✅ Thanks! <a href="${note.url}" target="_blank" rel="noopener">Note${note.id ? ' #' + note.id : ''}</a> created. A mapper will add the machine.`);
+        const label = note.id ? t('form.noteLink', { id: note.id }) : t('form.noteLinkNoId');
+        finish(esc(t('form.noteSent', { link: '\u0000' })).replace('\u0000', `<a href="${note.url}" target="_blank" rel="noopener">${esc(label)}</a>`));
       } catch (e) {
         btn.disabled = false;
-        setStatus(form, `Could not send the note (${esc(e.message)}).`, 'warn');
+        setStatus(form, esc(t('form.noteFailed', { msg: e.message })), 'warn');
       }
     });
 
@@ -531,10 +607,13 @@
       }
       if (!near.length) return;
       box.hidden = false;
-      box.innerHTML = `⚠️ ${near.length === 1 ? 'There is already a vending machine' : `There are already ${near.length} vending machines`} within 20 m:` +
-        '<ul>' + near.slice(0, 5).map((n) =>
-          `<li>${esc((n.tags && (n.tags.vending || n.tags.name)) || 'vending machine')}, ${Math.round(n.dist)} m${n.url ? ` — <a href="${n.url}" target="_blank" rel="noopener">view</a>` : ''}</li>`).join('') +
-        '</ul>Only upload if this is a different machine.';
+      box.innerHTML = `⚠️ ${esc(near.length === 1 ? t('review.dupe1') : t('review.dupeN', { n: near.length }))}` +
+        '<ul>' + near.slice(0, 5).map((n) => {
+          const what = (n.tags && n.tags.vending) ? n.tags.vending.split(';').map(itemLabel).join(', ')
+            : ((n.tags && n.tags.name) || t('review.dupeDefault'));
+          return `<li>${esc(what)}, ${Math.round(n.dist)} m${n.url ? ` — <a href="${n.url}" target="_blank" rel="noopener">${esc(t('review.dupeView'))}</a>` : ''}</li>`;
+        }).join('') +
+        `</ul>${esc(t('review.dupeHint'))}`;
       if (draft) draft.getPopup().update();
     }
 
@@ -542,25 +621,26 @@
       const box = q('.auth-box');
       const upload = q('.upload');
       if (!OSMClient.isConfigured()) {
-        box.innerHTML = '<p class="status warn">Direct upload isn\'t set up on this site yet. Use the note option or the iD/JOSM links instead.</p>';
+        box.innerHTML = `<p class="status warn">${esc(t('review.notConfigured'))}</p>`;
         upload.disabled = true;
         return;
       }
       upload.disabled = false;
       if (!OSMClient.isLoggedIn()) {
-        box.innerHTML = '<p class="muted">You\'ll be asked to log in to OpenStreetMap first (free account).</p>';
-        upload.textContent = 'Log in & upload to OpenStreetMap';
+        box.innerHTML = `<p class="muted">${esc(t('review.loginFirst'))}</p>`;
+        upload.textContent = t('review.loginUpload');
         return;
       }
-      box.innerHTML = '<p class="muted">Checking login…</p>';
+      box.innerHTML = `<p class="muted">${esc(t('review.checking'))}</p>`;
       try {
         const u = await OSMClient.currentUser();
-        box.innerHTML = `<p class="muted">Uploading as <strong>${esc(u.display_name)}</strong>${OSMClient.isDev ? ' on the <strong>dev server</strong>' : ''} · <a href="#" class="logout">log out</a></p>`;
-        upload.textContent = 'Upload to OpenStreetMap';
+        box.innerHTML = `<p class="muted">${esc(t('review.as', { user: '\u0000' })).replace('\u0000', `<strong>${esc(u.display_name)}</strong>`)}` +
+          `${OSMClient.isDev ? ` <strong>${esc(t('review.dev'))}</strong>` : ''} · <a href="#" class="logout">${esc(t('review.logout'))}</a></p>`;
+        upload.textContent = t('review.upload');
         q('.logout').addEventListener('click', (e) => { e.preventDefault(); OSMClient.logout(); renderAuth(); });
       } catch (e) {
         box.innerHTML = `<p class="muted">${esc(e.message)}</p>`;
-        upload.textContent = 'Log in & upload to OpenStreetMap';
+        upload.textContent = t('review.loginUpload');
       }
     }
 
@@ -572,16 +652,14 @@
         const { lat, lng } = draft.getLatLng();
         if (!OSMClient.isLoggedIn()) {
           // Leaves the page; the upload continues automatically after the OSM login (resumeAfterLogin).
-          setStatus(review, 'Taking you to OpenStreetMap to log in…');
+          setStatus(review, esc(t('review.toOsm')));
           await OSMClient.login({ action: 'createNode', lat, lng, tags, comment: changesetComment(tags) });
           return;
         }
-        setStatus(review, 'Uploading…');
+        setStatus(review, esc(t('review.uploading')));
         const r = await OSMClient.createNode(lat, lng, tags, changesetComment(tags));
         addLocalMarker(lat, lng, tags, r.nodeId);
-        finish(`✅ Added! <a href="${r.nodeUrl}" target="_blank" rel="noopener">Node ${esc(r.nodeId)}</a> in ` +
-          `<a href="${r.changesetUrl}" target="_blank" rel="noopener">changeset ${esc(r.changesetId)}</a>. ` +
-          'It shows here now and for everyone after the next nightly data update.');
+        finish(addedHtml(r));
       } catch (e) {
         console.error(e);
         btn.disabled = false;
@@ -591,7 +669,7 @@
     });
 
     function finish(html) {
-      done.innerHTML = `<h3>Thank you!</h3><p class="status ok">${html}</p>`;
+      done.innerHTML = `<h3>${esc(t('review.thanks'))}</h3><p class="status ok">${html}</p>`;
       show(done);
       if (draft) draft.dragging.disable();
     }
@@ -599,7 +677,26 @@
     L.DomEvent.disableClickPropagation(el);
     L.DomEvent.disableScrollPropagation(el);
     updateLinks();
-    return { el, updateCoords: updateLinks, prefill, openReview };
+    /** Rebuilds the form texts in the current language, keeping what the user entered. */
+    function relocalize() {
+      const tags = collectTags();
+      const step = !review.hidden ? 'review' : (!done.hidden ? 'done' : 'edit');
+      if (step === 'done') return;
+      const fresh = buildAddForm();
+      draft._form = fresh;
+      draft.setPopupContent(fresh.el);
+      fresh.prefill(tags);
+      if (step === 'review') fresh.openReview();
+    }
+
+    return { el, updateCoords: updateLinks, prefill, openReview, relocalize };
+  }
+
+  /** "✅ Added! Node 123 in changeset 456 …" with links, in the current language. */
+  function addedHtml(r) {
+    const node = `<a href="${r.nodeUrl}" target="_blank" rel="noopener">${esc(t('review.node', { id: r.nodeId }))}</a>`;
+    const cs = `<a href="${r.changesetUrl}" target="_blank" rel="noopener">${esc(t('review.changeset', { id: r.changesetId }))}</a>`;
+    return esc(t('review.added', { node: '\u0001', changeset: '\u0002' })).replace('\u0001', node).replace('\u0002', cs);
   }
 
   /** After returning from the OSM login page: finish the upload the user had started. */
@@ -612,8 +709,8 @@
       if (p && p.lat != null) {
         map.setView([p.lat, p.lng], 18);
         L.popup({ maxWidth: 300 }).setLatLng([p.lat, p.lng])
-          .setContent(`<div class="vm-popup add-form"><h3>Not uploaded</h3><p class="status warn">${esc(e.message)}</p>` +
-            '<p class="muted small">Nothing was changed on OpenStreetMap. Tap ＋ to try again.</p></div>').openOn(map);
+          .setContent(`<div class="vm-popup add-form"><h3>${esc(t('review.notUploaded'))}</h3><p class="status warn">${esc(e.message)}</p>` +
+            `<p class="muted small">${esc(t('review.nothingChanged'))}</p></div>`).openOn(map);
       } else {
         showError(e.message, false);
       }
@@ -721,7 +818,7 @@
     const missing = cellsIn(view).filter(([i, j]) => !loadedCells.has(cellKey(i, j)));
     if (!missing.length) { setLiveStatus(''); return; }
     if (map.getZoom() < LIVE.minZoom || missing.length > LIVE.maxCells) {
-      setLiveStatus('Zoom in to load vending machines in this area', 'hint');
+      setLiveStatus(t('live.zoomIn'), 'hint');
       return;
     }
     const s = Math.min(...missing.map(([i]) => i)) * LIVE.cell;
@@ -732,7 +829,7 @@
       'nwr["amenity"="vending_machine"];out center;';
 
     liveBusy = true;
-    setLiveStatus('Loading vending machines in this area…', 'busy');
+    setLiveStatus(t('live.loading'), 'busy');
     try {
       const json = await overpass(query);
       const added = [];
@@ -747,13 +844,13 @@
       }
       missing.forEach(([i, j]) => loadedCells.add(cellKey(i, j)));
       showAdded(added);
-      if (!liveUsed) { liveUsed = true; $('stamp').textContent += ' · live outside'; }
-      setLiveStatus(added.length ? `${added.length} more machine${added.length === 1 ? '' : 's'} loaded` : 'No vending machines found here yet', 'ok');
+      if (!liveUsed) { liveUsed = true; renderStamp(); }
+      setLiveStatus(added.length ? (added.length === 1 ? t('live.loaded1') : t('live.loadedN', { n: fmt(added.length) })) : t('live.none'), 'ok');
       setTimeout(() => { if ($('live-status').classList.contains('ok')) setLiveStatus(''); }, 2500);
     } catch (err) {
       if (err.name === 'AbortError') return;
       console.warn('Live load failed', err);
-      setLiveStatus('Could not load this area (Overpass is busy). Move the map to try again.', 'warn');
+      setLiveStatus(t('live.busy'), 'warn');
     } finally {
       liveBusy = false;
     }
@@ -843,19 +940,19 @@
     ev.preventDefault();
     const url = shareUrlFor(a.dataset.id);
     const e = entryById.get(a.dataset.id);
-    const title = (e && (e.props.name || e.props.brand)) || 'Vending machine';
+    const title = (e && (e.props.name || e.props.brand)) || t('popup.title');
     try {
       if (navigator.share && window.matchMedia('(pointer: coarse)').matches) {
         await navigator.share({ title, url });
         return;
       }
       await navigator.clipboard.writeText(url);
-      a.textContent = '✓ Link copied';
+      a.textContent = t('popup.copied');
     } catch (err) {
       if (err && err.name === 'AbortError') return; // share sheet dismissed
-      window.prompt('Copy this link:', url);
+      window.prompt(t('popup.copyPrompt'), url);
     }
-    setTimeout(() => { a.textContent = '🔗 Share'; }, 2000);
+    setTimeout(() => { a.textContent = t('popup.share'); }, 2000);
   });
 
   /** Opens the popup of a machine by id, loading it from OSM first if it isn't on the map yet. */
@@ -874,7 +971,7 @@
       } catch (err) { console.warn('Could not load shared machine', err); }
     }
     if (!e) {
-      showError('This vending machine could not be found — it may have been removed from OpenStreetMap.', false);
+      showError(t('err.notFound'), false);
       return;
     }
     selectedId = id;
@@ -912,17 +1009,24 @@
   // ---------- Overlays ----------
   function showError(msg, retry) {
     const box = $('error');
-    box.innerHTML = `<strong>Something went wrong</strong><span>${esc(msg)}</span>` +
-      `<button type="button">${retry ? 'Retry' : 'Dismiss'}</button>`;
+    box.innerHTML = `<strong>${esc(t('err.title'))}</strong><span>${esc(msg)}</span>` +
+      `<button type="button">${esc(retry ? t('err.retry') : t('err.dismiss'))}</button>`;
     box.hidden = false;
     box.querySelector('button').onclick = () => { box.hidden = true; if (retry) load(); };
   }
 
   function formatStamp(iso) {
-    if (!iso) return 'unknown';
+    if (!iso) return t('stamp.unknown');
     const d = new Date(iso);
     if (isNaN(d)) return iso;
-    return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    return d.toLocaleString(I18N.lang, { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  let dataMeta = null;
+  function renderStamp() {
+    if (!dataMeta) return;
+    $('stamp').textContent = t('stamp.asOf', { date: formatStamp(dataMeta.timestamp_osm_base) }) + (liveUsed ? ` · ${t('stamp.live')}` : '');
+    $('stamp').title = dataMeta.region ? t('stamp.region', { region: dataMeta.region }) : '';
   }
 
   // ---------- Load data ----------
@@ -948,8 +1052,8 @@
       applyFilter();
 
       const meta = gj.metadata || {};
-      $('stamp').textContent = `OSM data as of ${formatStamp(meta.timestamp_osm_base)}`;
-      $('stamp').title = meta.region ? `Region: ${meta.region}` : '';
+      dataMeta = meta;
+      renderStamp();
       markPrebuilt(meta.bbox);
 
       const fromLink = applyHash();
@@ -963,7 +1067,7 @@
       }
     } catch (err) {
       console.error(err);
-      showError(`Could not load the vending machine data. ${err.message}`, true);
+      showError(t('err.load', { msg: err.message }), true);
     } finally {
       $('loading').hidden = true;
     }

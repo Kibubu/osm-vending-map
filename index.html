@@ -13,35 +13,35 @@
         integrity="sha256-YU3qCpj/P06tdPBJGPax0bm6Q1wltfwjsho5TR4+TYc=" crossorigin="">
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
         integrity="sha256-YSWCMtmNZNwqex4CEw1nQhvFub2lmU7vcCKP+XVwwXA=" crossorigin="">
-  <link rel="stylesheet" href="style.css?v=10">
+  <link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
   <div id="map" role="application" aria-label="Map of vending machines"></div>
 
-  <aside id="panel" class="panel" aria-label="Filter by type">
+  <aside id="panel" class="panel" aria-label="Filter by type" data-i18n-aria="filter.aria">
     <button id="panel-toggle" class="panel-toggle" aria-expanded="true" aria-controls="panel-body">
-      <span class="panel-title">Vending machines</span>
+      <span class="panel-title" data-i18n="app.title">Vending machines</span>
       <span class="chevron" aria-hidden="true">▾</span>
     </button>
     <div id="panel-body" class="panel-body">
       <ul id="filters" class="filters"></ul>
       <div class="panel-actions">
-        <button type="button" id="all-on">All</button>
-        <button type="button" id="all-off">None</button>
+        <button type="button" id="all-on" data-i18n="filter.all">All</button>
+        <button type="button" id="all-off" data-i18n="filter.none">None</button>
       </div>
     </div>
   </aside>
 
   <div id="add-hint" class="add-hint" role="status" hidden>
-    <span>Tap the map where the vending machine is</span>
-    <button type="button" id="add-cancel">Cancel</button>
+    <span data-i18n="add.hint">Tap the map where the vending machine is</span>
+    <button type="button" id="add-cancel" data-i18n="cancel">Cancel</button>
   </div>
 
   <div id="live-status" class="live-status" role="status" hidden></div>
 
   <div id="loading" class="overlay-msg" role="status">
     <div class="spinner" aria-hidden="true"></div>
-    <span>Loading vending machines…</span>
+    <span data-i18n="loading">Loading vending machines…</span>
   </div>
   <div id="error" class="overlay-msg error" role="alert" hidden></div>
 
@@ -55,7 +55,8 @@
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"
           integrity="sha256-Hk4dIpcqOSb0hZjgyvFOP+cEmDXUKKNE/tT542ZbNQg=" crossorigin=""></script>
-  <script src="osm.js?v=10"></script>
-  <script src="app.js?v=10"></script>
+  <script src="i18n.js?v=11"></script>
+  <script src="osm.js?v=11"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>
