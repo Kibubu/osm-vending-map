@@ -200,6 +200,29 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .add-form .auth-box p { margin: 6px 0; }
 .add-form h3 + .status { margin-top: 0; }
 
+/* ---------- Live loading status ---------- */
+.live-status {
+  position: absolute;
+  bottom: 56px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  max-width: calc(100% - 40px);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--bg); color: var(--fg);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.live-status[hidden] { display: none; }
+.live-status.busy::before {
+  content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px;
+  border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.live-status.warn { background: #fff4e5; color: #6b4300; }
+@media (max-width: 640px) { .live-status { bottom: auto; top: 60px; } }
+
 /* ---------- Overlays ---------- */
 .overlay-msg {
   position: absolute;

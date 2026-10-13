@@ -153,9 +153,15 @@
     const visible = entries.filter((e) => e.cats.some((c) => active.has(c))).map((e) => e.marker);
     cluster.clearLayers();
     cluster.addLayers(visible);
-    $('count').textContent = visible.length === entries.length
+    updateCountText(visible.length);
+  }
+
+  function updateCountText(visibleCount) {
+    const n = visibleCount != null ? visibleCount
+      : entries.filter((e) => e.cats.some((c) => active.has(c))).length;
+    $('count').textContent = n === entries.length
       ? `${entries.length.toLocaleString()} machines`
-      : `${visible.length.toLocaleString()} of ${entries.length.toLocaleString()} machines`;
+      : `${n.toLocaleString()} of ${entries.length.toLocaleString()} machines`;
   }
 
   function buildFilters(counts) {
@@ -624,15 +630,154 @@
 
   }
 
+  // ---------- Machine store (prebuilt file + live Overpass + own uploads) ----------
+  const seenIds = new Set();
+  const counts = {};
+  const KEEP_KEYS = ['vending', 'name', 'operator', 'brand', 'opening_hours', 'level', 'note'];
+
+  /** Adds one machine unless it is already on the map. Returns the marker entry or null. */
+  function addMachine(id, lat, lon, props) {
+    if (seenIds.has(id) || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    seenIds.add(id);
+    const cats = categoriesOf(props);
+    cats.forEach((c) => { counts[c] = (counts[c] || 0) + 1; });
+    const marker = L.marker([lat, lon], { icon: iconFor(cats[0]), title: props.name || props.vending || '' });
+    marker.bindPopup(() => popupHtml(props, cats), { maxWidth: 300 });
+    const entry = { marker, cats };
+    entries.push(entry);
+    return entry;
+  }
+
+  /** Adds new entries to the visible cluster (respecting the filter) and refreshes counts. */
+  function showAdded(added) {
+    if (!added.length) return;
+    cluster.addLayers(added.filter((e) => e.cats.some((c) => active.has(c))).map((e) => e.marker));
+    buildFilters(counts);
+    updateCountText();
+  }
+
   /** Shows a freshly uploaded machine immediately, before the nightly data refresh. */
   function addLocalMarker(lat, lon, tags, nodeId) {
     const props = Object.assign({ osm_type: 'node', osm_id: nodeId }, tags);
     delete props.amenity;
-    const cats = categoriesOf(props);
-    const marker = L.marker([lat, lon], { icon: iconFor(cats[0]), title: props.vending || '' });
-    marker.bindPopup(() => popupHtml(props, cats), { maxWidth: 300 });
-    entries.push({ marker, cats });
-    applyFilter();
+    const e = addMachine(`node/${nodeId}`, lat, lon, props);
+    if (e) showAdded([e]);
+  }
+
+  // ---------- Live loading for areas outside the prebuilt region ----------
+  // The map is split into a grid of cells. When the view settles on cells we have no data for,
+  // one Overpass query fetches them (debounced, one request at a time, cached for the session).
+  const LIVE = {
+    cell: 0.2,           // degrees (~22 km north-south)
+    minZoom: 10,         // below this the area is too large to query politely
+    maxCells: 60,        // safety cap per request
+    debounceMs: 800,
+    endpoints: ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'],
+  };
+  const loadedCells = new Set();
+  let liveTimer = null;
+  let liveCtrl = null;
+  let liveBusy = false;
+  let liveUsed = false;
+  let liveHooked = false;
+
+  const cellKey = (i, j) => `${i}:${j}`;
+  function cellsIn(bounds) {
+    const out = [];
+    const i0 = Math.floor(bounds.getSouth() / LIVE.cell), i1 = Math.floor(bounds.getNorth() / LIVE.cell);
+    const j0 = Math.floor(bounds.getWest() / LIVE.cell), j1 = Math.floor(bounds.getEast() / LIVE.cell);
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) out.push([i, j]);
+    return out;
+  }
+  /** Marks grid cells that lie completely inside the prebuilt bbox as already loaded. */
+  function markPrebuilt(bbox) {
+    if (!Array.isArray(bbox) || bbox.length !== 4) return;
+    const [s, w, n, e] = bbox;
+    for (const [i, j] of cellsIn(L.latLngBounds([s, w], [n, e]))) {
+      const cs = i * LIVE.cell, cw = j * LIVE.cell;
+      if (cs >= s && cw >= w && cs + LIVE.cell <= n && cw + LIVE.cell <= e) loadedCells.add(cellKey(i, j));
+    }
+  }
+
+  function setLiveStatus(text, kind) {
+    const el = $('live-status');
+    el.hidden = !text;
+    el.className = 'live-status ' + (kind || '');
+    el.textContent = text || '';
+  }
+
+  function scheduleLive() {
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(loadLive, LIVE.debounceMs);
+  }
+
+  async function loadLive() {
+    if (liveBusy) { scheduleLive(); return; }
+    const view = map.getBounds();
+    const missing = cellsIn(view).filter(([i, j]) => !loadedCells.has(cellKey(i, j)));
+    if (!missing.length) { setLiveStatus(''); return; }
+    if (map.getZoom() < LIVE.minZoom || missing.length > LIVE.maxCells) {
+      setLiveStatus('Zoom in to load vending machines in this area', 'hint');
+      return;
+    }
+    const s = Math.min(...missing.map(([i]) => i)) * LIVE.cell;
+    const n = (Math.max(...missing.map(([i]) => i)) + 1) * LIVE.cell;
+    const w = Math.min(...missing.map(([, j]) => j)) * LIVE.cell;
+    const e = (Math.max(...missing.map(([, j]) => j)) + 1) * LIVE.cell;
+    const query = `[out:json][timeout:60][bbox:${s.toFixed(4)},${w.toFixed(4)},${n.toFixed(4)},${e.toFixed(4)}];` +
+      'nwr["amenity"="vending_machine"];out center;';
+
+    liveBusy = true;
+    setLiveStatus('Loading vending machines in this area…', 'busy');
+    try {
+      const json = await overpass(query);
+      const added = [];
+      for (const el of json.elements || []) {
+        const lat = el.lat != null ? el.lat : el.center && el.center.lat;
+        const lon = el.lon != null ? el.lon : el.center && el.center.lon;
+        const tags = el.tags || {};
+        const props = { osm_type: el.type, osm_id: el.id };
+        for (const k of Object.keys(tags)) if (KEEP_KEYS.includes(k) || k.startsWith('payment:')) props[k] = tags[k];
+        const entry = addMachine(`${el.type}/${el.id}`, lat, lon, props);
+        if (entry) added.push(entry);
+      }
+      missing.forEach(([i, j]) => loadedCells.add(cellKey(i, j)));
+      showAdded(added);
+      if (!liveUsed) { liveUsed = true; $('stamp').textContent += ' · live outside'; }
+      setLiveStatus(added.length ? `${added.length} more machine${added.length === 1 ? '' : 's'} loaded` : 'No vending machines found here yet', 'ok');
+      setTimeout(() => { if ($('live-status').classList.contains('ok')) setLiveStatus(''); }, 2500);
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      console.warn('Live load failed', err);
+      setLiveStatus('Could not load this area (Overpass is busy). Move the map to try again.', 'warn');
+    } finally {
+      liveBusy = false;
+    }
+  }
+
+  async function overpass(query) {
+    let lastErr;
+    for (const url of LIVE.endpoints) {
+      liveCtrl = new AbortController();
+      const timer = setTimeout(() => liveCtrl.abort(), 70000);
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'data=' + encodeURIComponent(query),
+          signal: liveCtrl.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (json.remark && /error|timed out|runtime/i.test(json.remark)) throw new Error(json.remark);
+        return json;
+      } catch (err) {
+        lastErr = err;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    throw lastErr;
   }
 
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && addMode) setAddMode(false); });
@@ -663,25 +808,22 @@
       const gj = await res.json();
       if (!gj || !Array.isArray(gj.features)) throw new Error('Data file is not valid GeoJSON.');
 
-      const counts = {};
-      entries = [];
+      const added = [];
       for (const f of gj.features) {
         if (!f.geometry || f.geometry.type !== 'Point') continue;
         const [lon, lat] = f.geometry.coordinates;
         const props = f.properties || {};
-        const cats = categoriesOf(props);
-        cats.forEach((c) => { counts[c] = (counts[c] || 0) + 1; });
-        const marker = L.marker([lat, lon], { icon: iconFor(cats[0]), title: props.name || props.vending || '' });
-        marker.bindPopup(() => popupHtml(props, cats), { maxWidth: 300 });
-        entries.push({ marker, cats });
+        const id = f.id || `${props.osm_type}/${props.osm_id}`;
+        const entry = addMachine(id, lat, lon, props);
+        if (entry) added.push(entry);
       }
-
       buildFilters(counts);
       applyFilter();
 
       const meta = gj.metadata || {};
       $('stamp').textContent = `OSM data as of ${formatStamp(meta.timestamp_osm_base)}`;
       $('stamp').title = meta.region ? `Region: ${meta.region}` : '';
+      markPrebuilt(meta.bbox);
 
       if (entries.length) {
         map.fitBounds(L.latLngBounds(entries.map((e) => e.marker.getLatLng())), { padding: [30, 30], maxZoom: 16, animate: false });
@@ -696,6 +838,8 @@
       $('loading').hidden = true;
     }
     resumeAfterLogin();
+    // Live loading starts with the first map move (not on page load), to spare Overpass.
+    if (!liveHooked) { liveHooked = true; map.on('moveend', scheduleLive); }
   }
 
   load();

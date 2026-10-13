@@ -8,6 +8,18 @@ A static map of **vending machines** (`amenity=vending_machine`) from [OpenStree
 
 Features: marker clustering, filter panel with 9 groups covering the `vending=*` values used worldwide (see [docs/vending-values.md](docs/vending-values.md); synonyms like `snack`/`snacks` are merged, `drinks;sweets` counts for both), per-type colored emoji markers, popups with operator/brand/payment/opening hours/level/note and *View/Edit on OSM* links, "Locate me", data timestamp + total count, mobile layout with a collapsible panel.
 
+## Outside the prebuilt region (live loading)
+
+The prebuilt `data/vending.geojson` covers the configured region and loads instantly. When you move the map elsewhere (zoom 10 or closer), the page asks the Overpass API for the machines in view and adds them to the map, filters and counts. To be polite to the shared Overpass servers:
+
+- nothing is queried on page load, only after you move the map
+- requests are debounced (0.8 s after the map stops) and only one runs at a time
+- the map is split into 0.2° grid cells; each cell is fetched once per visit, and cells inside the prebuilt region never are
+- below zoom 10 a hint asks you to zoom in instead of firing a huge query
+- if the main Overpass server is busy, a second one is tried
+
+Settings are in `app.js` → `LIVE` (cell size, minimum zoom, endpoints).
+
 ## Adding missing machines
 
 Tap **＋** and then the map, or right-click / long-press. Drag the red pin to the exact spot and fill in the form (what it sells, operator, brand, payment, opening hours, level). Then choose one of these:
