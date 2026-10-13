@@ -224,10 +224,8 @@
   }
 
   // ---------- Add a missing machine ----------
-  // Two ways to contribute: open the OSM editor (iD) at that spot, or leave an
-  // anonymous OSM note that mappers can turn into a proper node.
-  const OSM_API = 'https://api.openstreetmap.org/api/0.6';
-  const SITE_URL = location.origin + location.pathname;
+  // Upload directly with the visitor's OSM account (osm.js), open iD/JOSM at the spot,
+  // or leave an anonymous OSM note for mappers.
   let addMode = false;
   let draft = null;
   let addBtn = null;
@@ -298,86 +296,276 @@
     draft.on('dragend', () => { draft._dragging = false; });
   }
 
+  const PAYMENTS = [
+    ['coins', 'Coins'], ['notes', 'Notes'], ['debit_cards', 'Debit card'],
+    ['credit_cards', 'Credit card'], ['contactless', 'Contactless'], ['app', 'App'],
+  ];
+
   function buildAddForm() {
-    const el = document.createElement('form');
+    const el = document.createElement('div');
     el.className = 'vm-popup add-form';
-    el.noValidate = true;
     el.innerHTML = `
-      <h3>Add a vending machine</h3>
-      <p class="muted">Drag the pin to the exact spot. <span class="coords"></span></p>
-      <fieldset class="type-chips"><legend>What does it sell?</legend>
-        ${ADD_CHOICES.map(([v, label]) =>
-          `<label class="chip"><input type="checkbox" name="vending" value="${v}"><span>${esc(label)}</span></label>`).join('')}
-        <input type="text" name="vending_other" placeholder="Other (e.g. eggs, excrement_bags)" maxlength="80">
-      </fieldset>
-      <label class="field">Details <span class="muted">(optional)</span>
-        <textarea name="details" rows="3" maxlength="1500" placeholder="Operator/brand, payment (coins, cards…), opening hours, indoors/level…"></textarea>
-      </label>
-      <div class="add-actions">
-        <button type="submit" class="primary">Send as OSM note</button>
-        <a class="editor-link" target="_blank" rel="noopener">Add it myself in the OSM editor ↗</a>
+      <form class="step step-edit" novalidate>
+        <h3>Add a vending machine</h3>
+        <p class="muted">Drag the pin to the exact spot. <span class="coords"></span></p>
+        <fieldset class="type-chips"><legend>What does it sell? <span class="req">*</span></legend>
+          ${ADD_CHOICES.map(([v, label]) =>
+            `<label class="chip"><input type="checkbox" name="vending" value="${v}"><span>${esc(label)}</span></label>`).join('')}
+          <input type="text" name="vending_other" placeholder="Other (e.g. potatoes, cheese)" maxlength="80">
+        </fieldset>
+        <div class="grid2">
+          <label class="field">Operator<input type="text" name="operator" maxlength="120" placeholder="e.g. Tabakwaren Union"></label>
+          <label class="field">Brand<input type="text" name="brand" maxlength="120" placeholder="e.g. Selecta"></label>
+        </div>
+        <label class="field">Name <span class="muted">(only if signposted)</span><input type="text" name="name" maxlength="120"></label>
+        <fieldset class="type-chips"><legend>Payment</legend>
+          ${PAYMENTS.map(([v, label]) =>
+            `<label class="chip"><input type="checkbox" name="payment" value="${v}"><span>${esc(label)}</span></label>`).join('')}
+        </fieldset>
+        <div class="grid2">
+          <label class="field">Opening hours
+            <input type="text" name="opening_hours" maxlength="120" placeholder="Mo-Sa 06:00-22:00">
+            <span class="inline"><input type="checkbox" name="always"> 24/7</span>
+          </label>
+          <label class="field">Level <span class="muted">(indoors)</span><input type="text" name="level" maxlength="10" placeholder="0, -1, 1…"></label>
+        </div>
+        <label class="field">Note for mappers <span class="muted">(optional)</span>
+          <textarea name="note" rows="2" maxlength="255" placeholder="e.g. inside the station hall, next to the ticket office"></textarea>
+        </label>
+        <div class="add-actions">
+          <button type="submit" class="primary">Review &amp; add to OSM</button>
+          <button type="button" class="secondary send-note">No OSM account? Send as a note</button>
+        </div>
+        <p class="muted small other-editors">Or open it in
+          <a class="editor-link" target="_blank" rel="noopener">iD</a> ·
+          <a class="josm-link" target="_blank" rel="noopener" title="Needs JOSM running with Remote Control enabled">JOSM (prefilled)</a></p>
+        <p class="status" role="status" hidden></p>
+      </form>
+
+      <div class="step step-review" hidden>
+        <h3>Check before upload</h3>
+        <p class="muted">A new node will be created at <span class="coords"></span> with these tags:</p>
+        <table class="tag-table"></table>
+        <div class="dupes" hidden></div>
+        <div class="auth-box"></div>
+        <div class="add-actions">
+          <button type="button" class="primary upload">Upload to OpenStreetMap</button>
+          <button type="button" class="secondary back">← Back</button>
+        </div>
+        <p class="muted small">Uploaded under your own OSM account with the changeset comment and hashtag ${esc(OSMClient.hashtag)}. Only add machines you have seen yourself.</p>
+        <p class="status" role="status" hidden></p>
       </div>
-      <p class="muted small">Notes are public on openstreetmap.org and need no account. A mapper reviews them and adds the machine. New machines show up here after the next nightly data update.</p>
-      <p class="status" role="status" hidden></p>`;
 
-    const coordsEl = el.querySelector('.coords');
-    const editorLink = el.querySelector('.editor-link');
-    const status = el.querySelector('.status');
-    const submit = el.querySelector('button[type=submit]');
+      <div class="step step-done" hidden></div>`;
 
-    function updateCoords() {
-      const { lat, lng } = draft.getLatLng();
-      coordsEl.textContent = `(${lat.toFixed(5)}, ${lng.toFixed(5)})`;
-      editorLink.href = `https://www.openstreetmap.org/edit?editor=id#map=20/${lat.toFixed(6)}/${lng.toFixed(6)}`;
+    const q = (sel) => el.querySelector(sel);
+    const form = q('.step-edit');
+    const review = q('.step-review');
+    const done = q('.step-done');
+
+    function show(step) {
+      [form, review, done].forEach((s) => { s.hidden = s !== step; });
+      if (draft) draft.getPopup().update();
     }
 
-    function noteText() {
-      const types = [...el.querySelectorAll('input[name=vending]:checked')].map((c) => c.value);
-      const other = el.querySelector('input[name=vending_other]').value.trim()
-        .split(/[;,]/).map((s) => s.trim().toLowerCase().replace(/\s+/g, '_')).filter(Boolean);
-      const vending = [...types, ...other].join(';');
-      const details = el.querySelector('textarea').value.trim();
-      const lines = ['Missing vending machine here.', 'Suggested tags: amenity=vending_machine' + (vending ? `, vending=${vending}` : '')];
-      if (details) lines.push('', details);
-      lines.push('', `(reported via ${SITE_URL})`);
-      return { text: lines.join('\n'), hasInfo: Boolean(vending || details) };
-    }
-
-    function setStatus(html, kind) {
-      status.hidden = false;
+    function setStatus(scope, html, kind) {
+      const status = scope.querySelector('.status');
+      status.hidden = !html;
       status.className = 'status ' + (kind || '');
-      status.innerHTML = html;
+      status.innerHTML = html || '';
     }
 
-    el.addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      const { text, hasInfo } = noteText();
-      if (!hasInfo) { setStatus('Please pick a type or add a few details first.', 'warn'); return; }
+    function norm(v) { return v.trim().toLowerCase().replace(/\s+/g, '_'); }
+
+    /** Builds the OSM tags from the form. */
+    function collectTags() {
+      const fd = new FormData(form);
+      const vending = [...new Set([
+        ...fd.getAll('vending'),
+        ...String(fd.get('vending_other') || '').split(/[;,]/).map(norm).filter(Boolean),
+      ])];
+      const tags = { amenity: 'vending_machine' };
+      if (vending.length) tags.vending = vending.join(';');
+      for (const k of ['name', 'operator', 'brand', 'level', 'note']) {
+        const v = String(fd.get(k) || '').trim().replace(/\s+/g, ' ');
+        if (v) tags[k] = v;
+      }
+      const oh = fd.get('always') ? '24/7' : String(fd.get('opening_hours') || '').trim();
+      if (oh) tags.opening_hours = oh;
+      for (const p of fd.getAll('payment')) tags[`payment:${p}`] = 'yes';
+      return tags;
+    }
+
+    function updateLinks() {
       const { lat, lng } = draft.getLatLng();
-      submit.disabled = true;
-      setStatus('Sending…');
+      el.querySelectorAll('.coords').forEach((c) => { c.textContent = `(${lat.toFixed(5)}, ${lng.toFixed(5)})`; });
+      const tags = collectTags();
+      // iD cannot take tags via URL, but it can limit the preset list and prefill the changeset.
+      const presets = ['amenity/vending_machine', ...(tags.vending || '').split(';').filter(Boolean).map((v) => `amenity/vending_machine/${v}`)];
+      const idHash = new URLSearchParams({
+        map: `20/${lat.toFixed(6)}/${lng.toFixed(6)}`,
+        presets: presets.join(','),
+        comment: changesetComment(tags),
+        hashtags: OSMClient.hashtag.replace('#', ''),
+      });
+      q('.editor-link').href = `${OSMClient.web}/edit?editor=id#${idHash.toString().replace(/\+/g, '%20')}`;
+      // JOSM Remote Control creates the node with all tags at once.
+      const addtags = Object.entries(tags).map(([k, v]) => `${k}=${v.replace(/\|/g, '/')}`).join('|');
+      q('.josm-link').href = `http://127.0.0.1:8111/add_node?lat=${lat.toFixed(7)}&lon=${lng.toFixed(7)}&addtags=${encodeURIComponent(addtags)}`;
+    }
+
+    function changesetComment(tags) {
+      return `Add vending machine${tags.vending ? ` (${tags.vending.replace(/;/g, ', ')})` : ''}`;
+    }
+
+    function noteText(tags) {
+      const lines = ['Missing vending machine here. Suggested tags:'];
+      for (const [k, v] of Object.entries(tags)) lines.push(`${k}=${v}`);
+      lines.push('', `(reported via ${OSMClient.siteUrl})`);
+      return lines.join('\n');
+    }
+
+    function validate(tags) {
+      if (!tags.vending) return 'Please pick at least one thing it sells.';
+      if (tags.opening_hours && tags.opening_hours.length > 255) return 'Opening hours are too long.';
+      return '';
+    }
+
+    form.addEventListener('input', () => { updateLinks(); setStatus(form, ''); });
+    form.addEventListener('change', (e) => {
+      if (e.target.name === 'always') form.elements.opening_hours.disabled = e.target.checked;
+      updateLinks();
+    });
+
+    // ---- Note fallback ----
+    q('.send-note').addEventListener('click', async () => {
+      const tags = collectTags();
+      const err = validate(tags);
+      if (err) { setStatus(form, err, 'warn'); return; }
+      const { lat, lng } = draft.getLatLng();
+      const btn = q('.send-note');
+      btn.disabled = true;
+      setStatus(form, 'Sending note…');
       try {
-        const body = new URLSearchParams({ lat: lat.toFixed(7), lon: lng.toFixed(7), text });
-        const res = await fetch(`${OSM_API}/notes.json`, { method: 'POST', body });
-        if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-        const note = await res.json();
-        const id = note && note.properties && note.properties.id;
-        const url = id ? `https://www.openstreetmap.org/note/${id}` : 'https://www.openstreetmap.org/';
-        setStatus(`✅ Thanks! Note ${id ? '#' + id + ' ' : ''}created — <a href="${url}" target="_blank" rel="noopener">view it on OSM</a>.`, 'ok');
-        el.querySelectorAll('input, textarea').forEach((i) => { i.disabled = true; });
-        if (draft) draft.dragging.disable();
-      } catch (err) {
-        console.error(err);
-        submit.disabled = false;
-        setStatus(`Could not send the note (${esc(err.message)}). You can still use the OSM editor link.`, 'warn');
+        const note = await OSMClient.createNote(lat, lng, noteText(tags));
+        finish(`✅ Thanks! <a href="${note.url}" target="_blank" rel="noopener">Note${note.id ? ' #' + note.id : ''}</a> created. A mapper will add the machine.`);
+      } catch (e) {
+        btn.disabled = false;
+        setStatus(form, `Could not send the note (${esc(e.message)}).`, 'warn');
       }
     });
 
-    el.addEventListener('input', () => { if (status.classList.contains('warn')) status.hidden = true; });
+    // ---- Review step ----
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const tags = collectTags();
+      const err = validate(tags);
+      if (err) { setStatus(form, err, 'warn'); return; }
+      q('.tag-table').innerHTML = Object.entries(tags)
+        .map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('');
+      setStatus(review, '');
+      show(review);
+      renderAuth();
+      checkDupes();
+    });
+    q('.back').addEventListener('click', () => show(form));
+
+    async function checkDupes() {
+      const box = q('.dupes');
+      box.hidden = true;
+      const { lat, lng } = draft.getLatLng();
+      const here = L.latLng(lat, lng);
+      let near = [];
+      try {
+        near = (await OSMClient.nearbyVending(lat, lng, 20))
+          .map((n) => Object.assign(n, { dist: here.distanceTo([n.lat, n.lon]) }))
+          .filter((n) => n.dist <= 20);
+      } catch {
+        // Fall back to the prebuilt data if the live check fails.
+        near = entries.map((e) => ({ m: e.marker, dist: here.distanceTo(e.marker.getLatLng()) }))
+          .filter((n) => n.dist <= 20).map((n) => ({ dist: n.dist, tags: {}, url: null }));
+      }
+      if (!near.length) return;
+      box.hidden = false;
+      box.innerHTML = `⚠️ ${near.length === 1 ? 'There is already a vending machine' : `There are already ${near.length} vending machines`} within 20 m:` +
+        '<ul>' + near.slice(0, 5).map((n) =>
+          `<li>${esc((n.tags && (n.tags.vending || n.tags.name)) || 'vending machine')}, ${Math.round(n.dist)} m${n.url ? ` — <a href="${n.url}" target="_blank" rel="noopener">view</a>` : ''}</li>`).join('') +
+        '</ul>Only upload if this is a different machine.';
+      if (draft) draft.getPopup().update();
+    }
+
+    async function renderAuth() {
+      const box = q('.auth-box');
+      const upload = q('.upload');
+      if (!OSMClient.isConfigured()) {
+        box.innerHTML = '<p class="status warn">Direct upload isn\'t set up on this site yet. Use the note option or the iD/JOSM links instead.</p>';
+        upload.disabled = true;
+        return;
+      }
+      upload.disabled = false;
+      if (!OSMClient.isLoggedIn()) {
+        box.innerHTML = '<p class="muted">You\'ll be asked to log in to OpenStreetMap first (free account).</p>';
+        upload.textContent = 'Log in & upload to OpenStreetMap';
+        return;
+      }
+      box.innerHTML = '<p class="muted">Checking login…</p>';
+      try {
+        const u = await OSMClient.currentUser();
+        box.innerHTML = `<p class="muted">Uploading as <strong>${esc(u.display_name)}</strong>${OSMClient.isDev ? ' on the <strong>dev server</strong>' : ''} · <a href="#" class="logout">log out</a></p>`;
+        upload.textContent = 'Upload to OpenStreetMap';
+        q('.logout').addEventListener('click', (e) => { e.preventDefault(); OSMClient.logout(); renderAuth(); });
+      } catch (e) {
+        box.innerHTML = `<p class="muted">${esc(e.message)}</p>`;
+        upload.textContent = 'Log in & upload to OpenStreetMap';
+      }
+    }
+
+    q('.upload').addEventListener('click', async () => {
+      const btn = q('.upload');
+      btn.disabled = true;
+      try {
+        if (!OSMClient.isLoggedIn()) {
+          setStatus(review, 'Waiting for OSM login…');
+          await OSMClient.login();
+          await renderAuth();
+        }
+        setStatus(review, 'Uploading…');
+        const tags = collectTags();
+        const { lat, lng } = draft.getLatLng();
+        const r = await OSMClient.createNode(lat, lng, tags, changesetComment(tags));
+        addLocalMarker(lat, lng, tags, r.nodeId);
+        finish(`✅ Added! <a href="${r.nodeUrl}" target="_blank" rel="noopener">Node ${esc(r.nodeId)}</a> in ` +
+          `<a href="${r.changesetUrl}" target="_blank" rel="noopener">changeset ${esc(r.changesetId)}</a>. ` +
+          'It shows here now and for everyone after the next nightly data update.');
+      } catch (e) {
+        console.error(e);
+        btn.disabled = false;
+        setStatus(review, esc(e.message), 'warn');
+        renderAuth();
+      }
+    });
+
+    function finish(html) {
+      done.innerHTML = `<h3>Thank you!</h3><p class="status ok">${html}</p>`;
+      show(done);
+      if (draft) draft.dragging.disable();
+    }
+
     L.DomEvent.disableClickPropagation(el);
     L.DomEvent.disableScrollPropagation(el);
-    updateCoords();
-    return { el, updateCoords };
+    updateLinks();
+    return { el, updateCoords: updateLinks };
+  }
+
+  /** Shows a freshly uploaded machine immediately, before the nightly data refresh. */
+  function addLocalMarker(lat, lon, tags, nodeId) {
+    const props = Object.assign({ osm_type: 'node', osm_id: nodeId }, tags);
+    delete props.amenity;
+    const cats = categoriesOf(props);
+    const marker = L.marker([lat, lon], { icon: iconFor(cats[0]), title: props.vending || '' });
+    marker.bindPopup(() => popupHtml(props, cats), { maxWidth: 300 });
+    entries.push({ marker, cats });
+    applyFilter();
   }
 
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && addMode) setAddMode(false); });

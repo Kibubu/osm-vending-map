@@ -181,6 +181,23 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .add-form .status.ok { background: #e6f4ea; }
 .add-form .status.warn { background: #fff4e5; }
 
+.add-form .req { color: #d1242f; }
+.add-form .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+.add-form .field { margin-bottom: 6px; font-size: 12px; }
+.add-form .field input[type=text] { margin-top: 3px; font-weight: 400; }
+.add-form .field .inline { display: inline-flex; align-items: center; gap: 4px; margin-top: 3px; font-weight: 400; }
+.add-form input:disabled { background: #f1f3f5; color: #999; }
+.add-form button.secondary {
+  padding: 6px 10px; border: 1px solid #ccd; border-radius: 6px; background: #fff; color: #1f2328; font-size: 12px;
+}
+.add-form .other-editors { text-align: center; }
+.add-form .tag-table { margin: 4px 0 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.add-form .tag-table th { color: #555; font-weight: 500; }
+.add-form .dupes { margin: 6px 0; padding: 6px 8px; border-radius: 6px; background: #fff4e5; font-size: 12px; }
+.add-form .dupes ul { margin: 4px 0; padding-left: 18px; }
+.add-form .auth-box p { margin: 6px 0; }
+.add-form h3 + .status { margin-top: 0; }
+
 /* ---------- Overlays ---------- */
 .overlay-msg {
   position: absolute;

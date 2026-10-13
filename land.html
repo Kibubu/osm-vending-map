@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Signing in…</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; display: grid; place-items: center; min-height: 90vh; margin: 0; color: #1f2328; background: #fff; }
+    @media (prefers-color-scheme: dark) { body { color: #e6e8eb; background: #1d2125; } }
+  </style>
+</head>
+<body>
+  <p id="msg">Signing in… this window will close by itself.</p>
+  <script>
+    // OAuth redirect target: hand the authorization code back to the map page.
+    (function () {
+      var p = new URLSearchParams(location.search);
+      var msg = { type: 'osm-oauth', code: p.get('code'), state: p.get('state'), error: p.get('error') };
+      try { if (window.opener) window.opener.postMessage(msg, location.origin); } catch (e) {}
+      try { localStorage.setItem('osm-oauth-result', JSON.stringify(msg)); } catch (e) {}
+      history.replaceState(null, '', location.pathname); // drop the code from the address bar
+      setTimeout(function () {
+        window.close();
+        document.getElementById('msg').textContent = 'Signed in — you can close this tab and go back to the map.';
+      }, 400);
+    })();
+  </script>
+</body>
+</html>

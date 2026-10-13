@@ -10,18 +10,37 @@ Features: marker clustering, filter panel with 9 groups covering the `vending=*`
 
 ## Adding missing machines
 
-Tap the **＋** button and then tap the map, or right-click / long-press anywhere. A red pin appears, which you can drag to the exact spot, along with two options:
+Tap **＋** and then the map, or right-click / long-press. Drag the red pin to the exact spot and fill in the form (what it sells, operator, brand, payment, opening hours, level). Then choose one of these:
 
-- **Send as OSM note.** The page posts an anonymous [OSM note](https://wiki.openstreetmap.org/wiki/Notes) (no account needed) with suggested tags (`amenity=vending_machine`, `vending=…`) plus your details. Local mappers resolve notes and add the node.
-- **Add it myself in the OSM editor.** Opens iD zoomed to that spot. Add a point there and choose the "Vending Machine" preset (needs an OSM account).
+- **Review & add to OSM** (recommended). Shows the exact tags, warns if OSM already has a vending machine within 20 m, then uploads **one new node in its own changeset** using the visitor's **own OSM account** (OAuth 2.0 login in a popup). The app can only create new vending machines. It never modifies or deletes existing objects.
+- **Send as a note.** Needs no account. Creates a public [OSM note](https://wiki.openstreetmap.org/wiki/Notes) with the suggested tags for a mapper to add.
+- **iD / JOSM links.** iD opens at the spot with the preset list limited to vending machines and the changeset comment filled in (iD can't take tags via URL). JOSM (with Remote Control enabled) creates the node with **all tags prefilled**.
 
-Either way, the new machine appears on this map after the next nightly data update, once it exists in OSM. Notes are public, so don't put personal info in them.
+Every upload carries `created_by=osm-vending-map …`, a descriptive `comment` and `hashtags=#osm-vending-map`. You can watch all edits made through the site on [OSMCha](https://osmcha.org/?filters=%7B%22hashtags%22%3A%5B%7B%22label%22%3A%22osm-vending-map%22%2C%22value%22%3A%22osm-vending-map%22%7D%5D%7D) (filter: hashtag `osm-vending-map`).
+
+### One-time setup for direct upload (OAuth app)
+
+1. Log in at openstreetmap.org → **My Settings → OAuth 2 applications → Register new application** (or go to https://www.openstreetmap.org/oauth2/applications/new).
+2. Name: `osm-vending-map`. Redirect URIs (one per line):
+   ```
+   https://kibubu.github.io/osm-vending-map/land.html
+   http://127.0.0.1:8000/land.html
+   ```
+3. **Untick "Confidential application"** (a static site can't keep secrets; PKCE replaces the secret).
+4. Permissions: **Read user preferences** and **Modify the map**. Nothing else.
+5. Copy the **Client ID** into `osm.js` → `CONFIG.live.clientId`, then commit and push. The Client ID is public by design.
+
+Until a Client ID is set, the upload button is disabled and visitors get the note and editor options.
+
+**Testing safely:** open the site with `?osm=dev` to use the OSM dev server (`master.apis.dev.openstreetmap.org`), which has separate accounts and throwaway data. It needs its own app registered there, with its Client ID in `CONFIG.dev.clientId`. For local tests run `python3 -m http.server 8000` and open `http://127.0.0.1:8000/` (not `localhost`, which must match the redirect URI exactly).
 
 ## Files
 
 | Path | Purpose |
 |---|---|
 | `index.html`, `style.css`, `app.js` | The site |
+| `osm.js` | OSM login (OAuth 2 PKCE), node upload, notes, nearby-duplicate check |
+| `land.html` | OAuth redirect target that hands the login code back to the map |
 | `data/vending.geojson` | Prebuilt data (one feature per line for readable diffs) |
 | `scripts/fetch-data.mjs` | Overpass → osmtogeojson → slim GeoJSON |
 | `.github/workflows/update-data.yml` | Nightly + manual data refresh, commits only on change |
