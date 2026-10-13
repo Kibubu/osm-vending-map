@@ -191,6 +191,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
   padding: 6px 10px; border: 1px solid #ccd; border-radius: 6px; background: #fff; color: #1f2328; font-size: 12px;
 }
 .add-form .other-editors { text-align: center; }
+.add-form .btn-row { display: flex; gap: 6px; }
+.add-form .btn-row button { flex: 1; }
 .add-form .tag-table { margin: 4px 0 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .add-form .tag-table th { color: #555; font-weight: 500; }
 .add-form .dupes { margin: 6px 0; padding: 6px 8px; border-radius: 6px; background: #fff4e5; font-size: 12px; }

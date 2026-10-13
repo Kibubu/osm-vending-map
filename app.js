@@ -294,6 +294,7 @@
     });
     draft.on('dragstart', () => { draft._dragging = true; });
     draft.on('dragend', () => { draft._dragging = false; });
+    return form;
   }
 
   const PAYMENTS = [
@@ -350,7 +351,10 @@
         <div class="auth-box"></div>
         <div class="add-actions">
           <button type="button" class="primary upload">Upload to OpenStreetMap</button>
-          <button type="button" class="secondary back">← Back</button>
+          <div class="btn-row">
+            <button type="button" class="secondary back">✏️ Edit</button>
+            <button type="button" class="secondary cancel">✕ Cancel</button>
+          </div>
         </div>
         <p class="muted small">Uploaded under your own OSM account with the changeset comment and hashtag ${esc(OSMClient.hashtag)}. Only add machines you have seen yourself.</p>
         <p class="status" role="status" hidden></p>
@@ -456,19 +460,35 @@
     });
 
     // ---- Review step ----
-    form.addEventListener('submit', async (ev) => {
-      ev.preventDefault();
+    function openReview(statusHtml) {
       const tags = collectTags();
       const err = validate(tags);
-      if (err) { setStatus(form, err, 'warn'); return; }
+      if (err) { show(form); setStatus(form, err, 'warn'); return; }
       q('.tag-table').innerHTML = Object.entries(tags)
         .map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('');
-      setStatus(review, '');
+      setStatus(review, statusHtml || '', statusHtml ? 'ok' : '');
       show(review);
       renderAuth();
       checkDupes();
-    });
-    q('.back').addEventListener('click', () => show(form));
+    }
+    form.addEventListener('submit', (ev) => { ev.preventDefault(); openReview(); });
+    q('.back').addEventListener('click', () => { setStatus(review, ''); show(form); });
+    q('.cancel').addEventListener('click', () => { map.closePopup(); removeDraft(); });
+
+    /** Fills the form from OSM tags (used when coming back from the OSM login). */
+    function prefill(tags) {
+      const known = new Set(ADD_CHOICES.map(([v]) => v));
+      const vend = (tags.vending || '').split(';').filter(Boolean);
+      form.querySelectorAll('input[name=vending]').forEach((c) => { c.checked = vend.includes(c.value); });
+      form.elements.vending_other.value = vend.filter((v) => !known.has(v)).join(', ');
+      for (const k of ['name', 'operator', 'brand', 'level', 'note']) form.elements[k].value = tags[k] || '';
+      const always = tags.opening_hours === '24/7';
+      form.elements.always.checked = always;
+      form.elements.opening_hours.disabled = always;
+      form.elements.opening_hours.value = always ? '' : (tags.opening_hours || '');
+      form.querySelectorAll('input[name=payment]').forEach((c) => { c.checked = tags[`payment:${c.value}`] === 'yes'; });
+      updateLinks();
+    }
 
     async function checkDupes() {
       const box = q('.dupes');
@@ -555,7 +575,7 @@
     L.DomEvent.disableClickPropagation(el);
     L.DomEvent.disableScrollPropagation(el);
     updateLinks();
-    return { el, updateCoords: updateLinks };
+    return { el, updateCoords: updateLinks, prefill, openReview };
   }
 
   /** After returning from the OSM login page: finish the upload the user had started. */
@@ -576,23 +596,15 @@
       return;
     }
     if (!res || !res.payload || res.payload.action !== 'createNode') return;
-    const { lat, lng, tags, comment } = res.payload;
-    map.setView([lat, lng], 18);
-    const popup = L.popup({ maxWidth: 300, closeOnClick: false }).setLatLng([lat, lng])
-      .setContent(`<div class="vm-popup add-form"><h3>Uploading…</h3><p class="muted">Logged in as <strong>${esc(res.user.display_name)}</strong>.</p></div>`)
-      .openOn(map);
-    try {
-      const r = await OSMClient.createNode(lat, lng, tags, comment);
-      addLocalMarker(lat, lng, tags, r.nodeId);
-      popup.setContent(`<div class="vm-popup add-form"><h3>Thank you!</h3><p class="status ok">✅ Added! ` +
-        `<a href="${r.nodeUrl}" target="_blank" rel="noopener">Node ${esc(r.nodeId)}</a> in ` +
-        `<a href="${r.changesetUrl}" target="_blank" rel="noopener">changeset ${esc(r.changesetId)}</a>. ` +
-        'It shows here now and for everyone after the next nightly data update.</p></div>');
-    } catch (e) {
-      console.error(e);
-      popup.setContent(`<div class="vm-popup add-form"><h3>Upload failed</h3><p class="status warn">${esc(e.message)}</p>` +
-        '<p class="muted small">You are logged in now — tap ＋ and try again.</p></div>');
-    }
+    // Logged in now — reopen the draft with everything filled in and let the user confirm.
+    const { lat, lng, tags } = res.payload;
+    // Put the pin low on the screen so the (tall) summary popup above it fits.
+    map.setView([lat, lng], 18, { animate: false });
+    map.panBy([0, -Math.round(map.getSize().y * 0.35)], { animate: false });
+    const form = placeDraft(L.latLng(lat, lng));
+    form.prefill(tags);
+    form.openReview();
+
   }
 
   /** Shows a freshly uploaded machine immediately, before the nightly data refresh. */
@@ -655,10 +667,10 @@
       $('stamp').title = meta.region ? `Region: ${meta.region}` : '';
 
       if (entries.length) {
-        map.fitBounds(L.latLngBounds(entries.map((e) => e.marker.getLatLng())), { padding: [30, 30], maxZoom: 16 });
+        map.fitBounds(L.latLngBounds(entries.map((e) => e.marker.getLatLng())), { padding: [30, 30], maxZoom: 16, animate: false });
       } else if (Array.isArray(meta.bbox) && meta.bbox.length === 4) {
         const [s, w, n, e] = meta.bbox;
-        map.fitBounds([[s, w], [n, e]]);
+        map.fitBounds([[s, w], [n, e]], { animate: false });
       }
     } catch (err) {
       console.error(err);
