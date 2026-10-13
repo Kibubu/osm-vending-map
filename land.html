@@ -19,13 +19,22 @@
       var msg = { code: p.get('code'), state: p.get('state'), error: p.get('error') };
       var pending = null;
       try { pending = JSON.parse(sessionStorage.getItem('osm-oauth-pending')); } catch (e) {}
+      if (!pending || pending.state !== msg.state) {
+        // Login finished in a different tab/window: fall back to the copy in localStorage.
+        var shared = null;
+        try { shared = JSON.parse(localStorage.getItem('osm-oauth-pending')); } catch (e) {}
+        if (shared) {
+          pending = shared;
+          try { sessionStorage.setItem('osm-oauth-pending', JSON.stringify(shared)); } catch (e) {}
+        }
+      }
       if (pending && pending.returnTo) {
         try { sessionStorage.setItem('osm-oauth-result', JSON.stringify(msg)); } catch (e) {}
         location.replace(pending.returnTo);
       } else {
         history.replaceState(null, '', location.pathname);
         document.getElementById('msg').innerHTML =
-          'This login link has expired. <a href="./">Back to the map</a> and try again.';
+          'This login link has expired. <a href="./">Back to the map</a>, reload it (Cmd/Ctrl+Shift+R) and try again.';
       }
     })();
   </script>

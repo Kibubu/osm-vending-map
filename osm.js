@@ -99,7 +99,10 @@
       code_challenge_method: 'S256',
     });
     sstore.del(SESSION_RESULT_KEY);
-    sstore.set(PENDING_KEY, JSON.stringify({ verifier, state, payload: payload || null, returnTo: location.href, t: Date.now() }));
+    const pending = JSON.stringify({ verifier, state, payload: payload || null, returnTo: location.href, t: Date.now() });
+    // sessionStorage is per tab; localStorage is the fallback if the login ends in another tab.
+    sstore.set(PENDING_KEY, pending);
+    store.set(PENDING_KEY, pending);
     location.assign(`${cfg.web}/oauth2/authorize?${params}`);
     return new Promise(() => {}); // the page is navigating away
   }
@@ -110,11 +113,13 @@
    * Throws an Error with `.payload` attached if the login failed.
    */
   async function resume() {
-    const rawPending = sstore.get(PENDING_KEY);
     const rawResult = sstore.get(SESSION_RESULT_KEY);
-    if (!rawPending || !rawResult) return null;
+    if (!rawResult) return null;
+    const rawPending = sstore.get(PENDING_KEY) || store.get(PENDING_KEY);
     sstore.del(PENDING_KEY);
+    store.del(PENDING_KEY);
     sstore.del(SESSION_RESULT_KEY);
+    if (!rawPending) return null;
     let pending, result;
     try { pending = JSON.parse(rawPending); result = JSON.parse(rawResult); } catch { return null; }
     const fail = (msg) => { const e = new Error(msg); e.payload = pending.payload; throw e; };
