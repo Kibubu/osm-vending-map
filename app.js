@@ -769,18 +769,23 @@
   // The map is split into a grid of cells. When the view settles on cells we have no data for,
   // one Overpass query fetches them (debounced, one request at a time, cached for the session).
   const LIVE = {
-    cell: 0.2,           // degrees (~22 km north-south)
-    minZoom: 10,         // below this the area is too large to query politely
-    maxCells: 60,        // safety cap per request
-    debounceMs: 800,
+    cell: 0.2,             // degrees (~22 km north-south); cache unit
+    block: 2,              // cells per side per request (0.4° ≈ 45 × 30 km) — small queries answer fast
+    minZoom: 10,           // below this the area is too large to query politely
+    maxCells: 80,          // safety cap per view
+    debounceMs: 400,
+    concurrency: 2,        // public Overpass allows ~2 parallel requests per client
+    timeoutS: 25,          // short server timeout = scheduled sooner by Overpass
+    cacheTtlMs: 12 * 3600 * 1000,
     endpoints: ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'],
   };
   const loadedCells = new Set();
+  const pendingCells = new Set();
+  const inflight = new Map();   // blockKey -> { ctrl, bounds, cells }
   let liveTimer = null;
-  let liveCtrl = null;
-  let liveBusy = false;
   let liveUsed = false;
   let liveHooked = false;
+  let liveRun = 0;
 
   const cellKey = (i, j) => `${i}:${j}`;
   function cellsIn(bounds) {
@@ -790,6 +795,9 @@
     for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) out.push([i, j]);
     return out;
   }
+  const cellOf = (lat, lon) => [Math.floor(lat / LIVE.cell), Math.floor(lon / LIVE.cell)];
+  const cellBounds = ([i, j]) => L.latLngBounds([i * LIVE.cell, j * LIVE.cell], [(i + 1) * LIVE.cell, (j + 1) * LIVE.cell]);
+
   /** Marks grid cells that lie completely inside the prebuilt bbox as already loaded. */
   function markPrebuilt(bbox) {
     if (!Array.isArray(bbox) || bbox.length !== 4) return;
@@ -798,6 +806,46 @@
       const cs = i * LIVE.cell, cw = j * LIVE.cell;
       if (cs >= s && cw >= w && cs + LIVE.cell <= n && cw + LIVE.cell <= e) loadedCells.add(cellKey(i, j));
     }
+  }
+
+  // ---- per-cell cache in localStorage (instant revisits, also after reload) ----
+  const CACHE_PREFIX = 'vm-cell:';
+  function cacheGet(key) {
+    try {
+      const raw = localStorage.getItem(CACHE_PREFIX + key);
+      if (!raw) return null;
+      const v = JSON.parse(raw);
+      if (!v || Date.now() - v.t > LIVE.cacheTtlMs) { localStorage.removeItem(CACHE_PREFIX + key); return null; }
+      return v.e;
+    } catch { return null; }
+  }
+  function cacheSet(key, elements) {
+    const val = JSON.stringify({ t: Date.now(), e: elements });
+    try { localStorage.setItem(CACHE_PREFIX + key, val); } catch {
+      // Storage full: drop all cached cells once and try again; give up silently otherwise.
+      try {
+        Object.keys(localStorage).filter((k) => k.startsWith(CACHE_PREFIX)).forEach((k) => localStorage.removeItem(k));
+        localStorage.setItem(CACHE_PREFIX + key, val);
+      } catch { /* no caching then */ }
+    }
+  }
+
+  /** Overpass element -> compact [id, lat, lon, props] (what we cache and add to the map). */
+  function compact(el) {
+    const lat = el.lat != null ? el.lat : el.center && el.center.lat;
+    const lon = el.lon != null ? el.lon : el.center && el.center.lon;
+    const props = { osm_type: el.type, osm_id: el.id };
+    const tags = el.tags || {};
+    for (const k of Object.keys(tags)) if (KEEP_KEYS.includes(k) || k.startsWith('payment:')) props[k] = tags[k];
+    return [`${el.type}/${el.id}`, lat, lon, props];
+  }
+  function addCompact(list) {
+    const added = [];
+    for (const [id, lat, lon, props] of list) {
+      const entry = addMachine(id, lat, lon, props);
+      if (entry) added.push(entry);
+    }
+    return added;
   }
 
   function setLiveStatus(text, kind) {
@@ -813,69 +861,131 @@
   }
 
   async function loadLive() {
-    if (liveBusy) { scheduleLive(); return; }
+    const run = ++liveRun;
     const view = map.getBounds();
-    const missing = cellsIn(view).filter(([i, j]) => !loadedCells.has(cellKey(i, j)));
-    if (!missing.length) { setLiveStatus(''); return; }
+
+    // Cancel requests for areas that are no longer on screen.
+    for (const [key, job] of inflight) {
+      if (!job.bounds.intersects(view)) {
+        job.ctrl.abort();
+        job.cells.forEach((c) => pendingCells.delete(c));
+        inflight.delete(key);
+      }
+    }
+
+    let missing = cellsIn(view).filter(([i, j]) => !loadedCells.has(cellKey(i, j)) && !pendingCells.has(cellKey(i, j)));
+    if (!missing.length) { if (!inflight.size) setLiveStatus(''); return; }
     if (map.getZoom() < LIVE.minZoom || missing.length > LIVE.maxCells) {
       setLiveStatus(t('live.zoomIn'), 'hint');
       return;
     }
-    const s = Math.min(...missing.map(([i]) => i)) * LIVE.cell;
-    const n = (Math.max(...missing.map(([i]) => i)) + 1) * LIVE.cell;
-    const w = Math.min(...missing.map(([, j]) => j)) * LIVE.cell;
-    const e = (Math.max(...missing.map(([, j]) => j)) + 1) * LIVE.cell;
-    const query = `[out:json][timeout:60][bbox:${s.toFixed(4)},${w.toFixed(4)},${n.toFixed(4)},${e.toFixed(4)}];` +
-      'nwr["amenity"="vending_machine"];out center;';
 
-    liveBusy = true;
-    setLiveStatus(t('live.loading'), 'busy');
-    try {
-      const json = await overpass(query);
-      const added = [];
-      for (const el of json.elements || []) {
-        const lat = el.lat != null ? el.lat : el.center && el.center.lat;
-        const lon = el.lon != null ? el.lon : el.center && el.center.lon;
-        const tags = el.tags || {};
-        const props = { osm_type: el.type, osm_id: el.id };
-        for (const k of Object.keys(tags)) if (KEEP_KEYS.includes(k) || k.startsWith('payment:')) props[k] = tags[k];
-        const entry = addMachine(`${el.type}/${el.id}`, lat, lon, props);
-        if (entry) added.push(entry);
-      }
-      missing.forEach(([i, j]) => loadedCells.add(cellKey(i, j)));
-      showAdded(added);
-      if (!liveUsed) { liveUsed = true; renderStamp(); }
-      setLiveStatus(added.length ? (added.length === 1 ? t('live.loaded1') : t('live.loadedN', { n: fmt(added.length) })) : t('live.none'), 'ok');
-      setTimeout(() => { if ($('live-status').classList.contains('ok')) setLiveStatus(''); }, 2500);
-    } catch (err) {
-      if (err.name === 'AbortError') return;
-      console.warn('Live load failed', err);
-      setLiveStatus(t('live.busy'), 'warn');
-    } finally {
-      liveBusy = false;
+    // 1) Cached cells show up immediately.
+    const fromCache = [];
+    missing = missing.filter(([i, j]) => {
+      const cached = cacheGet(cellKey(i, j));
+      if (!cached) return true;
+      fromCache.push(...cached);
+      loadedCells.add(cellKey(i, j));
+      return false;
+    });
+    let addedTotal = 0;
+    if (fromCache.length) { const a = addCompact(fromCache); addedTotal += a.length; showAdded(a); markLive(); }
+    if (!missing.length) { finishStatus(addedTotal); return; }
+
+    // 2) Group the rest into small blocks, nearest to the map centre first.
+    const groups = new Map();
+    for (const [i, j] of missing) {
+      const key = `${Math.floor(i / LIVE.block)}:${Math.floor(j / LIVE.block)}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push([i, j]);
     }
+    const center = map.getCenter();
+    const blocks = [...groups.entries()].map(([key, cells]) => {
+      const bounds = cells.reduce((b, c) => b.extend(cellBounds(c)), cellBounds(cells[0]));
+      return { key, cells, bounds, dist: center.distanceTo(bounds.getCenter()) };
+    }).sort((x, y) => x.dist - y.dist);
+    blocks.forEach((b) => b.cells.forEach(([i, j]) => pendingCells.add(cellKey(i, j))));
+
+    let done = 0, failed = 0;
+    const total = blocks.length;
+    const progress = () => { if (run === liveRun) setLiveStatus(`${t('live.loading')} (${done}/${total})`, 'busy'); };
+    progress();
+
+    const queue = blocks.slice();
+    async function worker() {
+      while (queue.length) {
+        const b = queue.shift();
+        if (!b.bounds.intersects(map.getBounds())) { b.cells.forEach(([i, j]) => pendingCells.delete(cellKey(i, j))); done++; continue; }
+        const ctrl = new AbortController();
+        inflight.set(b.key + '#' + run, { ctrl, bounds: b.bounds, cells: b.cells.map(([i, j]) => cellKey(i, j)) });
+        try {
+          const json = await overpass(blockQuery(b.bounds), ctrl.signal);
+          // Split the answer per cell for the cache, then add to the map right away.
+          const perCell = new Map(b.cells.map(([i, j]) => [cellKey(i, j), []]));
+          for (const el of json.elements || []) {
+            const c = compact(el);
+            if (!Number.isFinite(c[1]) || !Number.isFinite(c[2])) continue;
+            const k = cellKey(...cellOf(c[1], c[2]));
+            if (perCell.has(k)) perCell.get(k).push(c);
+          }
+          for (const [k, list] of perCell) { cacheSet(k, list); loadedCells.add(k); }
+          const added = addCompact([...perCell.values()].flat());
+          addedTotal += added.length;
+          showAdded(added);
+          markLive();
+        } catch (err) {
+          if (err.name !== 'AbortError') { failed++; console.warn('Live block failed', err); }
+        } finally {
+          b.cells.forEach(([i, j]) => pendingCells.delete(cellKey(i, j)));
+          inflight.delete(b.key + '#' + run);
+          done++;
+          progress();
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(LIVE.concurrency, blocks.length) }, worker));
+    if (run !== liveRun && inflight.size) return; // a newer run is still busy; let it report
+    if (failed) setLiveStatus(t('live.busy'), 'warn');
+    else finishStatus(addedTotal);
   }
 
-  async function overpass(query) {
+  function blockQuery(bounds) {
+    const bb = [bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast()].map((n) => n.toFixed(4)).join(',');
+    return `[out:json][timeout:${LIVE.timeoutS}][bbox:${bb}];nwr["amenity"="vending_machine"];out center qt;`;
+  }
+
+  function markLive() { if (!liveUsed) { liveUsed = true; renderStamp(); } }
+
+  function finishStatus(n) {
+    setLiveStatus(n ? (n === 1 ? t('live.loaded1') : t('live.loadedN', { n: fmt(n) })) : t('live.none'), 'ok');
+    setTimeout(() => { if ($('live-status').classList.contains('ok')) setLiveStatus(''); }, 2500);
+  }
+
+  async function overpass(query, signal) {
     let lastErr;
     for (const url of LIVE.endpoints) {
-      liveCtrl = new AbortController();
-      const timer = setTimeout(() => liveCtrl.abort(), 70000);
+      const ctrl = new AbortController();
+      const onAbort = () => ctrl.abort();
+      if (signal) { if (signal.aborted) ctrl.abort(); else signal.addEventListener('abort', onAbort); }
+      const timer = setTimeout(() => ctrl.abort(), (LIVE.timeoutS + 20) * 1000);
       try {
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: 'data=' + encodeURIComponent(query),
-          signal: liveCtrl.signal,
+          signal: ctrl.signal,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         if (json.remark && /error|timed out|runtime/i.test(json.remark)) throw new Error(json.remark);
         return json;
       } catch (err) {
+        if (signal && signal.aborted) { const e = new Error('aborted'); e.name = 'AbortError'; throw e; }
         lastErr = err;
       } finally {
         clearTimeout(timer);
+        if (signal) signal.removeEventListener('abort', onAbort);
       }
     }
     throw lastErr;

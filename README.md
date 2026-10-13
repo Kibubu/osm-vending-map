@@ -35,15 +35,14 @@ https://kibubu.github.io/osm-vending-map/#map=17/51.12544/9.28142&m=node/1198697
 
 ## Outside the prebuilt region (live loading)
 
-The prebuilt `data/vending.geojson` covers the configured region and loads instantly. When you move the map elsewhere (zoom 10 or closer), the page asks the Overpass API for the machines in view and adds them to the map, filters and counts. To be polite to the shared Overpass servers:
+The prebuilt `data/vending.geojson` covers the configured region and loads instantly. When you move the map elsewhere (zoom 10 or closer), the page asks the Overpass API for the machines in view:
 
-- nothing is queried on page load, only after you move the map
-- requests are debounced (0.8 s after the map stops) and only one runs at a time
-- the map is split into 0.2° grid cells; each cell is fetched once per visit, and cells inside the prebuilt region never are
-- below zoom 10 a hint asks you to zoom in instead of firing a huge query
-- if the main Overpass server is busy, a second one is tried
+- **Progressive:** the missing area is split into small blocks (0.4° ≈ 45 × 30 km). They are requested nearest-to-centre first, two at a time, and each block's markers appear as soon as it arrives ("Loading… (2/6)").
+- **Cancelled when stale:** blocks you've panned away from are aborted.
+- **Cached:** each 0.2° cell is kept in the browser's localStorage for 12 hours, so revisits (also after a reload) are instant and cost no request.
+- **Polite:** nothing is queried on page load, requests start 0.4 s after the map stops, queries use a short server timeout and unsorted output (`out center qt`), and below zoom 10 a hint asks you to zoom in. If the main Overpass server fails, a second one is tried.
 
-Settings are in `app.js` → `LIVE` (cell size, minimum zoom, endpoints).
+Settings are in `app.js` → `LIVE` (cell/block size, concurrency, cache lifetime, endpoints).
 
 ## Adding missing machines
 
