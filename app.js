@@ -132,7 +132,22 @@
 
   // ---------- State ----------
   let entries = []; // { marker, cats }
-  const active = new Set(TYPES.map((t) => t.key));
+  // Filter choice is remembered per browser. We store the *hidden* groups, so groups added
+  // in a later version of the site show up by default.
+  const FILTER_KEY = 'vm-filter-hidden';
+  function loadHidden() {
+    try {
+      const v = JSON.parse(localStorage.getItem(FILTER_KEY) || '[]');
+      return Array.isArray(v) ? v : [];
+    } catch { return []; }
+  }
+  function saveHidden() {
+    try {
+      localStorage.setItem(FILTER_KEY, JSON.stringify(TYPES.map((t) => t.key).filter((k) => !active.has(k))));
+    } catch { /* storage unavailable (private mode etc.) — filter just won't be remembered */ }
+  }
+  const hiddenAtStart = new Set(loadHidden());
+  const active = new Set(TYPES.map((t) => t.key).filter((k) => !hiddenAtStart.has(k)));
 
   function applyFilter() {
     const visible = entries.filter((e) => e.cats.some((c) => active.has(c))).map((e) => e.marker);
@@ -162,6 +177,7 @@
     const cb = ev.target;
     if (cb.type !== 'checkbox') return;
     if (cb.checked) active.add(cb.value); else active.delete(cb.value);
+    saveHidden();
     applyFilter();
   });
 
@@ -169,6 +185,7 @@
     active.clear();
     if (on) TYPES.forEach((t) => active.add(t.key));
     document.querySelectorAll('#filters input').forEach((cb) => { cb.checked = on; });
+    saveHidden();
     applyFilter();
   }
   $('all-on').addEventListener('click', () => setAll(true));
