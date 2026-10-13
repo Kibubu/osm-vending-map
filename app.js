@@ -524,16 +524,15 @@
       const btn = q('.upload');
       btn.disabled = true;
       try {
-        if (!OSMClient.isLoggedIn()) {
-          setStatus(review, 'Finish the login in the OpenStreetMap window/tab, then come back here. <a href="#" class="cancel-login">Cancel</a>');
-          const c = review.querySelector('.cancel-login');
-          if (c) c.addEventListener('click', (e) => { e.preventDefault(); OSMClient.cancelLogin(); });
-          await OSMClient.login();
-          await renderAuth();
-        }
-        setStatus(review, 'Uploading…');
         const tags = collectTags();
         const { lat, lng } = draft.getLatLng();
+        if (!OSMClient.isLoggedIn()) {
+          // Leaves the page; the upload continues automatically after the OSM login (resumeAfterLogin).
+          setStatus(review, 'Taking you to OpenStreetMap to log in…');
+          await OSMClient.login({ action: 'createNode', lat, lng, tags, comment: changesetComment(tags) });
+          return;
+        }
+        setStatus(review, 'Uploading…');
         const r = await OSMClient.createNode(lat, lng, tags, changesetComment(tags));
         addLocalMarker(lat, lng, tags, r.nodeId);
         finish(`✅ Added! <a href="${r.nodeUrl}" target="_blank" rel="noopener">Node ${esc(r.nodeId)}</a> in ` +
@@ -557,6 +556,43 @@
     L.DomEvent.disableScrollPropagation(el);
     updateLinks();
     return { el, updateCoords: updateLinks };
+  }
+
+  /** After returning from the OSM login page: finish the upload the user had started. */
+  async function resumeAfterLogin() {
+    let res;
+    try {
+      res = await OSMClient.resume();
+    } catch (e) {
+      const p = e.payload;
+      if (p && p.lat != null) {
+        map.setView([p.lat, p.lng], 18);
+        L.popup({ maxWidth: 300 }).setLatLng([p.lat, p.lng])
+          .setContent(`<div class="vm-popup add-form"><h3>Not uploaded</h3><p class="status warn">${esc(e.message)}</p>` +
+            '<p class="muted small">Nothing was changed on OpenStreetMap. Tap ＋ to try again.</p></div>').openOn(map);
+      } else {
+        showError(e.message, false);
+      }
+      return;
+    }
+    if (!res || !res.payload || res.payload.action !== 'createNode') return;
+    const { lat, lng, tags, comment } = res.payload;
+    map.setView([lat, lng], 18);
+    const popup = L.popup({ maxWidth: 300, closeOnClick: false }).setLatLng([lat, lng])
+      .setContent(`<div class="vm-popup add-form"><h3>Uploading…</h3><p class="muted">Logged in as <strong>${esc(res.user.display_name)}</strong>.</p></div>`)
+      .openOn(map);
+    try {
+      const r = await OSMClient.createNode(lat, lng, tags, comment);
+      addLocalMarker(lat, lng, tags, r.nodeId);
+      popup.setContent(`<div class="vm-popup add-form"><h3>Thank you!</h3><p class="status ok">✅ Added! ` +
+        `<a href="${r.nodeUrl}" target="_blank" rel="noopener">Node ${esc(r.nodeId)}</a> in ` +
+        `<a href="${r.changesetUrl}" target="_blank" rel="noopener">changeset ${esc(r.changesetId)}</a>. ` +
+        'It shows here now and for everyone after the next nightly data update.</p></div>');
+    } catch (e) {
+      console.error(e);
+      popup.setContent(`<div class="vm-popup add-form"><h3>Upload failed</h3><p class="status warn">${esc(e.message)}</p>` +
+        '<p class="muted small">You are logged in now — tap ＋ and try again.</p></div>');
+    }
   }
 
   /** Shows a freshly uploaded machine immediately, before the nightly data refresh. */
@@ -630,6 +666,7 @@
     } finally {
       $('loading').hidden = true;
     }
+    resumeAfterLogin();
   }
 
   load();

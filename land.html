@@ -11,19 +11,22 @@
   </style>
 </head>
 <body>
-  <p id="msg">Signing in… this window will close by itself.</p>
+  <p id="msg">Signing in…</p>
   <script>
-    // OAuth redirect target: hand the authorization code back to the map page.
+    // OAuth redirect target: store the result for the map page (same tab) and go back to it.
     (function () {
       var p = new URLSearchParams(location.search);
-      var msg = { type: 'osm-oauth', code: p.get('code'), state: p.get('state'), error: p.get('error') };
-      try { if (window.opener) window.opener.postMessage(msg, location.origin); } catch (e) {}
-      try { localStorage.setItem('osm-oauth-result', JSON.stringify(msg)); } catch (e) {}
-      history.replaceState(null, '', location.pathname); // drop the code from the address bar
-      setTimeout(function () {
-        window.close();
-        document.getElementById('msg').textContent = 'Signed in — you can close this tab and go back to the map.';
-      }, 400);
+      var msg = { code: p.get('code'), state: p.get('state'), error: p.get('error') };
+      var pending = null;
+      try { pending = JSON.parse(sessionStorage.getItem('osm-oauth-pending')); } catch (e) {}
+      if (pending && pending.returnTo) {
+        try { sessionStorage.setItem('osm-oauth-result', JSON.stringify(msg)); } catch (e) {}
+        location.replace(pending.returnTo);
+      } else {
+        history.replaceState(null, '', location.pathname);
+        document.getElementById('msg').innerHTML =
+          'This login link has expired. <a href="./">Back to the map</a> and try again.';
+      }
     })();
   </script>
 </body>

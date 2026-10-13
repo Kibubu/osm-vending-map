@@ -39,7 +39,6 @@
   const isDev = new URLSearchParams(location.search).get('osm') === 'dev';
   const cfg = isDev ? CONFIG.dev : CONFIG.live;
   const TOKEN_KEY = `osm-token-${isDev ? 'dev' : 'live'}`;
-  const RESULT_KEY = 'osm-oauth-result';
   const REDIRECT_URI = location.origin + location.pathname.replace(/[^/]*$/, '') + 'land.html';
   const SITE_URL = location.origin + location.pathname.replace(/index\.html$/, '');
 
@@ -68,19 +67,26 @@
 
   // ---------- auth ----------
   let user = null; // { id, display_name }
-  let cancelPending = null;
-  function cancelLogin() { if (cancelPending) cancelPending(); }
 
   function token() { return store.get(TOKEN_KEY); }
   function isConfigured() { return Boolean(cfg.clientId); }
   function isLoggedIn() { return Boolean(token()); }
 
-  /** Opens the OSM login in a popup (new tab on phones) and resolves when land.html reports back. */
-  async function login() {
+  // ---------- login: full-page redirect (no popup) ----------
+  // Popups are unreliable with OSM: its Cross-Origin-Opener-Policy severs the popup from this
+  // page, blockers interfere and phones open tabs. So we redirect this tab to OSM, land.html
+  // sends us back here, and the pending action (payload) survives in sessionStorage.
+  const PENDING_KEY = 'osm-oauth-pending';
+  const SESSION_RESULT_KEY = 'osm-oauth-result';
+  const sstore = {
+    get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* ignore */ } },
+    del(k) { try { sessionStorage.removeItem(k); } catch { /* ignore */ } },
+  };
+
+  /** Leaves the page to log in at OSM. `payload` is handed back by resume() after the round trip. */
+  async function login(payload) {
     if (!isConfigured()) throw new Error('Direct upload is not configured (missing OAuth Client ID).');
-    // Open the window synchronously (still inside the click) so pop-up blockers allow it.
-    const popup = window.open('', 'osm-login', 'width=560,height=720');
-    if (!popup) throw new Error('The login window was blocked — please allow pop-ups for this site.');
     const verifier = randomString(48);
     const state = randomString(16);
     const params = new URLSearchParams({
@@ -92,50 +98,29 @@
       code_challenge: await challengeFor(verifier),
       code_challenge_method: 'S256',
     });
-    store.del(RESULT_KEY);
-    popup.location.href = `${cfg.web}/oauth2/authorize?${params}`;
+    sstore.del(SESSION_RESULT_KEY);
+    sstore.set(PENDING_KEY, JSON.stringify({ verifier, state, payload: payload || null, returnTo: location.href, t: Date.now() }));
+    location.assign(`${cfg.web}/oauth2/authorize?${params}`);
+    return new Promise(() => {}); // the page is navigating away
+  }
 
-    const result = await new Promise((resolve, reject) => {
-      let done = false;
-      const finish = (msg) => {
-        if (done || !msg || msg.type !== 'osm-oauth') return;
-        done = true;
-        cleanup();
-        resolve(msg);
-      };
-      const onMessage = (ev) => { if (ev.origin === location.origin) finish(ev.data); };
-      const onStorage = (ev) => {
-        if (ev.key === RESULT_KEY && ev.newValue) { try { finish(JSON.parse(ev.newValue)); } catch { /* ignore */ } }
-      };
-      // NOTE: openstreetmap.org sends Cross-Origin-Opener-Policy, which severs the link to the
-      // popup: `popup.closed` reads true right away and land.html has no `window.opener`.
-      // So we never trust popup.closed; land.html reports back via localStorage instead.
-      const started = Date.now();
-      const timer = setInterval(() => {
-        const raw = store.get(RESULT_KEY);
-        if (raw) { try { finish(JSON.parse(raw)); } catch { /* ignore */ } }
-        else if (Date.now() - started > 10 * 60 * 1000) fail(new Error('Login timed out — please try again.'));
-      }, 500);
-      cancelPending = () => fail(new Error('Login cancelled.'));
-      function fail(err) {
-        if (done) return;
-        done = true;
-        cleanup();
-        reject(err);
-      }
-      function cleanup() {
-        clearInterval(timer);
-        cancelPending = null;
-        window.removeEventListener('message', onMessage);
-        window.removeEventListener('storage', onStorage);
-        store.del(RESULT_KEY);
-      }
-      window.addEventListener('message', onMessage);
-      window.addEventListener('storage', onStorage);
-    });
-
-    if (result.error) throw new Error(`Login failed: ${result.error}`);
-    if (result.state !== state) throw new Error('Login failed: state mismatch.');
+  /**
+   * Call once on page load. If we just came back from the OSM login, exchanges the code for a
+   * token and returns { user, payload }. Returns null when there is nothing to resume.
+   * Throws an Error with `.payload` attached if the login failed.
+   */
+  async function resume() {
+    const rawPending = sstore.get(PENDING_KEY);
+    const rawResult = sstore.get(SESSION_RESULT_KEY);
+    if (!rawPending || !rawResult) return null;
+    sstore.del(PENDING_KEY);
+    sstore.del(SESSION_RESULT_KEY);
+    let pending, result;
+    try { pending = JSON.parse(rawPending); result = JSON.parse(rawResult); } catch { return null; }
+    const fail = (msg) => { const e = new Error(msg); e.payload = pending.payload; throw e; };
+    if (result.error) fail(result.error === 'access_denied' ? 'Login was cancelled on OpenStreetMap.' : `Login failed: ${result.error}`);
+    if (!result.code || result.state !== pending.state) fail('Login failed: state mismatch — please try again.');
+    if (Date.now() - pending.t > 30 * 60 * 1000) fail('Login took too long — please try again.');
 
     const res = await fetch(`${cfg.web}/oauth2/token`, {
       method: 'POST',
@@ -145,15 +130,15 @@
         code: result.code,
         redirect_uri: REDIRECT_URI,
         client_id: cfg.clientId,
-        code_verifier: verifier,
+        code_verifier: pending.verifier,
       }),
     });
-    if (!res.ok) throw new Error(`Token exchange failed (HTTP ${res.status}).`);
+    if (!res.ok) fail(`Token exchange failed (HTTP ${res.status}): ${(await res.text()).slice(0, 200)}`);
     const json = await res.json();
-    if (!json.access_token) throw new Error('Token exchange failed: no access token.');
+    if (!json.access_token) fail('Token exchange failed: no access token.');
     store.set(TOKEN_KEY, json.access_token);
     user = null;
-    return currentUser();
+    return { user: await currentUser(), payload: pending.payload };
   }
 
   function logout() {
@@ -270,7 +255,7 @@
   }
 
   window.OSMClient = {
-    isDev, isConfigured, isLoggedIn, login, cancelLogin, logout, currentUser,
+    isDev, isConfigured, isLoggedIn, login, resume, logout, currentUser,
     createNode, createNote, nearbyVending,
     web: cfg.web, siteUrl: SITE_URL, hashtag: HASHTAG, appName: APP_NAME,
   };
