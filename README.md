@@ -8,6 +8,15 @@ A static map of **vending machines** (`amenity=vending_machine`) from [OpenStree
 
 Features: marker clustering, filter panel by `vending` type with counts (`drinks;sweets` counts for both), per-type colored emoji markers, popups with operator/brand/payment/opening hours/level/note and *View/Edit on OSM* links, "Locate me", data timestamp + total count, mobile layout with a collapsible panel.
 
+## Adding missing machines
+
+Tap the **＋** button and then tap the map, or right-click / long-press anywhere. A red pin appears, which you can drag to the exact spot, along with two options:
+
+- **Send as OSM note.** The page posts an anonymous [OSM note](https://wiki.openstreetmap.org/wiki/Notes) (no account needed) with suggested tags (`amenity=vending_machine`, `vending=…`) plus your details. Local mappers resolve notes and add the node.
+- **Add it myself in the OSM editor.** Opens iD zoomed to that spot. Add a point there and choose the "Vending Machine" preset (needs an OSM account).
+
+Either way, the new machine appears on this map after the next nightly data update, once it exists in OSM. Notes are public, so don't put personal info in them.
+
 ## Files
 
 | Path | Purpose |

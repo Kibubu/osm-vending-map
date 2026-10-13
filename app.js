@@ -194,6 +194,165 @@
     }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
   }
 
+  // ---------- Add a missing machine ----------
+  // Two ways to contribute: open the OSM editor (iD) at that spot, or leave an
+  // anonymous OSM note that mappers can turn into a proper node.
+  const OSM_API = 'https://api.openstreetmap.org/api/0.6';
+  const SITE_URL = location.origin + location.pathname;
+  let addMode = false;
+  let draft = null;
+  let addBtn = null;
+
+  const AddControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd() {
+      const wrap = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+      addBtn = L.DomUtil.create('button', 'locate-btn add-btn', wrap);
+      addBtn.type = 'button';
+      addBtn.title = 'Add a missing vending machine';
+      addBtn.setAttribute('aria-label', 'Add a missing vending machine');
+      addBtn.setAttribute('aria-pressed', 'false');
+      addBtn.textContent = '＋';
+      L.DomEvent.disableClickPropagation(wrap);
+      L.DomEvent.on(addBtn, 'click', () => setAddMode(!addMode));
+      return wrap;
+    },
+  });
+  map.addControl(new AddControl());
+
+  const hint = $('add-hint');
+  $('add-cancel').addEventListener('click', () => { setAddMode(false); removeDraft(); });
+
+  function setAddMode(on) {
+    addMode = on;
+    map.getContainer().classList.toggle('adding', on);
+    addBtn.classList.toggle('active', on);
+    addBtn.setAttribute('aria-pressed', String(on));
+    hint.hidden = !on;
+    if (on) map.closePopup();
+  }
+
+  function removeDraft() {
+    if (draft) { map.removeLayer(draft); draft = null; }
+  }
+
+  map.on('click', (e) => {
+    if (!addMode) return;
+    setAddMode(false);
+    placeDraft(e.latlng);
+  });
+  // Right-click on desktop, long-press on touch devices.
+  map.on('contextmenu', (e) => placeDraft(e.latlng));
+
+  function placeDraft(latlng) {
+    removeDraft();
+    draft = L.marker(latlng, {
+      draggable: true,
+      autoPan: true,
+      zIndexOffset: 1000,
+      icon: L.divIcon({ className: 'vm-icon', html: '<div class="vm-pin draft-pin">＋</div>', iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16] }),
+    }).addTo(map);
+    const form = buildAddForm();
+    draft.bindPopup(form.el, {
+      maxWidth: Math.min(300, window.innerWidth - 100),
+      minWidth: Math.min(260, window.innerWidth - 100),
+      maxHeight: Math.max(240, window.innerHeight - 170), // scrolls on short screens
+      autoPanPaddingTopLeft: [50, 20],
+      autoPanPaddingBottomRight: [10, 70],
+    }).openPopup();
+    draft.on('dragend', () => { form.updateCoords(); draft.openPopup(); });
+    draft.on('popupclose', () => {
+      // Keep the pin while dragging; remove it once the user closes the form.
+      setTimeout(() => { if (draft && !draft.isPopupOpen() && !draft._dragging) removeDraft(); }, 250);
+    });
+    draft.on('dragstart', () => { draft._dragging = true; });
+    draft.on('dragend', () => { draft._dragging = false; });
+  }
+
+  function buildAddForm() {
+    const el = document.createElement('form');
+    el.className = 'vm-popup add-form';
+    el.noValidate = true;
+    el.innerHTML = `
+      <h3>Add a vending machine</h3>
+      <p class="muted">Drag the pin to the exact spot. <span class="coords"></span></p>
+      <fieldset class="type-chips"><legend>What does it sell?</legend>
+        ${TYPES.filter((t) => t.key !== 'other').map((t) =>
+          `<label class="chip"><input type="checkbox" name="vending" value="${t.key}"><span>${t.emoji} ${esc(t.label)}</span></label>`).join('')}
+        <input type="text" name="vending_other" placeholder="Other (e.g. eggs, excrement_bags)" maxlength="80">
+      </fieldset>
+      <label class="field">Details <span class="muted">(optional)</span>
+        <textarea name="details" rows="3" maxlength="1500" placeholder="Operator/brand, payment (coins, cards…), opening hours, indoors/level…"></textarea>
+      </label>
+      <div class="add-actions">
+        <button type="submit" class="primary">Send as OSM note</button>
+        <a class="editor-link" target="_blank" rel="noopener">Add it myself in the OSM editor ↗</a>
+      </div>
+      <p class="muted small">Notes are public on openstreetmap.org and need no account. A mapper reviews them and adds the machine. New machines show up here after the next nightly data update.</p>
+      <p class="status" role="status" hidden></p>`;
+
+    const coordsEl = el.querySelector('.coords');
+    const editorLink = el.querySelector('.editor-link');
+    const status = el.querySelector('.status');
+    const submit = el.querySelector('button[type=submit]');
+
+    function updateCoords() {
+      const { lat, lng } = draft.getLatLng();
+      coordsEl.textContent = `(${lat.toFixed(5)}, ${lng.toFixed(5)})`;
+      editorLink.href = `https://www.openstreetmap.org/edit?editor=id#map=20/${lat.toFixed(6)}/${lng.toFixed(6)}`;
+    }
+
+    function noteText() {
+      const types = [...el.querySelectorAll('input[name=vending]:checked')].map((c) => c.value);
+      const other = el.querySelector('input[name=vending_other]').value.trim()
+        .split(/[;,]/).map((s) => s.trim().toLowerCase().replace(/\s+/g, '_')).filter(Boolean);
+      const vending = [...types, ...other].join(';');
+      const details = el.querySelector('textarea').value.trim();
+      const lines = ['Missing vending machine here.', 'Suggested tags: amenity=vending_machine' + (vending ? `, vending=${vending}` : '')];
+      if (details) lines.push('', details);
+      lines.push('', `(reported via ${SITE_URL})`);
+      return { text: lines.join('\n'), hasInfo: Boolean(vending || details) };
+    }
+
+    function setStatus(html, kind) {
+      status.hidden = false;
+      status.className = 'status ' + (kind || '');
+      status.innerHTML = html;
+    }
+
+    el.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const { text, hasInfo } = noteText();
+      if (!hasInfo) { setStatus('Please pick a type or add a few details first.', 'warn'); return; }
+      const { lat, lng } = draft.getLatLng();
+      submit.disabled = true;
+      setStatus('Sending…');
+      try {
+        const body = new URLSearchParams({ lat: lat.toFixed(7), lon: lng.toFixed(7), text });
+        const res = await fetch(`${OSM_API}/notes.json`, { method: 'POST', body });
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+        const note = await res.json();
+        const id = note && note.properties && note.properties.id;
+        const url = id ? `https://www.openstreetmap.org/note/${id}` : 'https://www.openstreetmap.org/';
+        setStatus(`✅ Thanks! Note ${id ? '#' + id + ' ' : ''}created — <a href="${url}" target="_blank" rel="noopener">view it on OSM</a>.`, 'ok');
+        el.querySelectorAll('input, textarea').forEach((i) => { i.disabled = true; });
+        if (draft) draft.dragging.disable();
+      } catch (err) {
+        console.error(err);
+        submit.disabled = false;
+        setStatus(`Could not send the note (${esc(err.message)}). You can still use the OSM editor link.`, 'warn');
+      }
+    });
+
+    el.addEventListener('input', () => { if (status.classList.contains('warn')) status.hidden = true; });
+    L.DomEvent.disableClickPropagation(el);
+    L.DomEvent.disableScrollPropagation(el);
+    updateCoords();
+    return { el, updateCoords };
+  }
+
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && addMode) setAddMode(false); });
+
   // ---------- Overlays ----------
   function showError(msg, retry) {
     const box = $('error');
