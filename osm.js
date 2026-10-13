@@ -68,6 +68,8 @@
 
   // ---------- auth ----------
   let user = null; // { id, display_name }
+  let cancelPending = null;
+  function cancelLogin() { if (cancelPending) cancelPending(); }
 
   function token() { return store.get(TOKEN_KEY); }
   function isConfigured() { return Boolean(cfg.clientId); }
@@ -105,16 +107,25 @@
       const onStorage = (ev) => {
         if (ev.key === RESULT_KEY && ev.newValue) { try { finish(JSON.parse(ev.newValue)); } catch { /* ignore */ } }
       };
+      // NOTE: openstreetmap.org sends Cross-Origin-Opener-Policy, which severs the link to the
+      // popup: `popup.closed` reads true right away and land.html has no `window.opener`.
+      // So we never trust popup.closed; land.html reports back via localStorage instead.
+      const started = Date.now();
       const timer = setInterval(() => {
-        // Fallback: poll storage; give up if the window was closed without an answer.
         const raw = store.get(RESULT_KEY);
         if (raw) { try { finish(JSON.parse(raw)); } catch { /* ignore */ } }
-        else if (popup.closed) {
-          setTimeout(() => { if (!done) { done = true; cleanup(); reject(new Error('Login window closed.')); } }, 800);
-        }
+        else if (Date.now() - started > 10 * 60 * 1000) fail(new Error('Login timed out — please try again.'));
       }, 500);
+      cancelPending = () => fail(new Error('Login cancelled.'));
+      function fail(err) {
+        if (done) return;
+        done = true;
+        cleanup();
+        reject(err);
+      }
       function cleanup() {
         clearInterval(timer);
+        cancelPending = null;
         window.removeEventListener('message', onMessage);
         window.removeEventListener('storage', onStorage);
         store.del(RESULT_KEY);
@@ -259,7 +270,7 @@
   }
 
   window.OSMClient = {
-    isDev, isConfigured, isLoggedIn, login, logout, currentUser,
+    isDev, isConfigured, isLoggedIn, login, cancelLogin, logout, currentUser,
     createNode, createNote, nearbyVending,
     web: cfg.web, siteUrl: SITE_URL, hashtag: HASHTAG, appName: APP_NAME,
   };

@@ -525,7 +525,9 @@
       btn.disabled = true;
       try {
         if (!OSMClient.isLoggedIn()) {
-          setStatus(review, 'Waiting for OSM login…');
+          setStatus(review, 'Finish the login in the OpenStreetMap window/tab, then come back here. <a href="#" class="cancel-login">Cancel</a>');
+          const c = review.querySelector('.cancel-login');
+          if (c) c.addEventListener('click', (e) => { e.preventDefault(); OSMClient.cancelLogin(); });
           await OSMClient.login();
           await renderAuth();
         }
