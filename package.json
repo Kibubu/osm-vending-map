@@ -1,0 +1,18 @@
+{
+  "name": "osm-vending-map",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static map of vending machines from OpenStreetMap",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "fetch": "node scripts/fetch-data.mjs",
+    "serve": "python3 -m http.server 8000"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "osmtogeojson": "3.0.0-beta.5"
+  }
+}
