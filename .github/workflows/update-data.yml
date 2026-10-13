@@ -22,9 +22,9 @@ jobs:
       REGION_NAME: 'Fritzlar and surroundings'
       USER_AGENT: 'osm-vending-map/1.0 (GitHub Action; +https://github.com/${{ github.repository }})'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
