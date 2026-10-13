@@ -130,6 +130,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* ---------- Add mode ---------- */
 .add-btn { font-size: 20px; font-weight: 600; }
+.basemap-btn { font-size: 18px; }
+.leaflet-container.satellite { background: #1b1f23; }
+/* Clusters stay readable on dark imagery */
+.leaflet-container.satellite .marker-cluster { box-shadow: 0 0 0 2px rgba(255,255,255,.85); }
 .add-btn.active { background: var(--accent); color: #fff; }
 .leaflet-container.adding { cursor: crosshair; }
 .draft-pin { width: 34px; height: 34px; background: #d1242f; color: #fff; font-size: 20px; font-weight: 700; }

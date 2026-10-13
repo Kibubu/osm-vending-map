@@ -54,10 +54,39 @@
   // ---------- Map ----------
   const map = L.map('map', { zoomControl: false, worldCopyJump: true }).setView([51.16, 10.45], 6);
   let zoomCtl = L.control.zoom({ zoomInTitle: t('ctl.zoomIn'), zoomOutTitle: t('ctl.zoomOut') }).addTo(map);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(map);
+  // Base maps: OSM (default) and satellite imagery (Esri World Imagery + labels on top).
+  const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+  const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
+  const BASEMAPS = {
+    map: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: OSM_ATTR }),
+    satellite: L.layerGroup([
+      L.tileLayer(`${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`, {
+        maxZoom: 19, maxNativeZoom: 18,
+        attribution: 'Imagery &copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics, and the GIS User Community',
+      }),
+      L.tileLayer(`${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 18, opacity: 0.8 }),
+      L.tileLayer(`${ESRI}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 18 }),
+    ]),
+  };
+  const BASEMAP_KEY = 'vm-basemap';
+  let basemap = 'map';
+  try { if (localStorage.getItem(BASEMAP_KEY) === 'satellite') basemap = 'satellite'; } catch { /* ignore */ }
+  BASEMAPS[basemap].addTo(map);
+  // Vending data attribution stays visible on both base maps.
+  BASEMAPS.satellite.on('add', () => map.attributionControl.addAttribution(`Data ${OSM_ATTR}`));
+  BASEMAPS.satellite.on('remove', () => map.attributionControl.removeAttribution(`Data ${OSM_ATTR}`));
+  if (basemap === 'satellite') map.attributionControl.addAttribution(`Data ${OSM_ATTR}`);
+
+  function setBasemap(name) {
+    if (name === basemap || !BASEMAPS[name]) return;
+    map.removeLayer(BASEMAPS[basemap]);
+    BASEMAPS[name].addTo(map);
+    basemap = name;
+    map.getContainer().classList.toggle('satellite', name === 'satellite');
+    try { localStorage.setItem(BASEMAP_KEY, name); } catch { /* ignore */ }
+    if (typeof renderBasemapBtn === 'function') renderBasemapBtn();
+  }
+  map.getContainer().classList.toggle('satellite', basemap === 'satellite');
 
   const cluster = L.markerClusterGroup({
     chunkedLoading: true,
@@ -326,6 +355,30 @@
     },
   });
   map.addControl(new LangControl());
+
+  // ---------- Map / satellite toggle ----------
+  let renderBasemapBtn = null;
+  const BasemapControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd() {
+      const wrap = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+      const btn = L.DomUtil.create('button', 'locate-btn basemap-btn', wrap);
+      btn.type = 'button';
+      renderBasemapBtn = () => {
+        const toSat = basemap !== 'satellite';
+        btn.textContent = toSat ? '🛰️' : '🗺️';
+        btn.title = toSat ? t('ctl.satellite') : t('ctl.mapView');
+        btn.setAttribute('aria-label', btn.title);
+        btn.setAttribute('aria-pressed', String(!toSat));
+      };
+      btn.addEventListener('click', () => setBasemap(basemap === 'satellite' ? 'map' : 'satellite'));
+      I18N.onChange(renderBasemapBtn);
+      renderBasemapBtn();
+      L.DomEvent.disableClickPropagation(wrap);
+      return wrap;
+    },
+  });
+  map.addControl(new BasemapControl());
 
   /** Re-renders everything language-dependent after the visitor switches language. */
   I18N.onChange(() => {

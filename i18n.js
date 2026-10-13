@@ -16,6 +16,7 @@
 
   const STRINGS = {
     en: {
+      'ctl.satellite': 'Satellite view', 'ctl.mapView': 'Map view',
       'app.title': 'Vending machines', 'filter.all': 'All', 'filter.none': 'None', 'filter.aria': 'Filter by type',
       'loading': 'Loading vending machines…', 'add.hint': 'Tap the map where the vending machine is', 'cancel': 'Cancel',
       'count.all': '{n} machines', 'count.some': '{n} of {total} machines',
@@ -64,6 +65,7 @@
     },
 
     de: {
+      'ctl.satellite': 'Satellitenansicht', 'ctl.mapView': 'Kartenansicht',
       'app.title': 'Verkaufsautomaten', 'filter.all': 'Alle', 'filter.none': 'Keine', 'filter.aria': 'Nach Art filtern',
       'loading': 'Verkaufsautomaten werden geladen …', 'add.hint': 'Tippe auf die Karte, wo der Automat steht', 'cancel': 'Abbrechen',
       'count.all': '{n} Automaten', 'count.some': '{n} von {total} Automaten',
@@ -112,6 +114,7 @@
     },
 
     fr: {
+      'ctl.satellite': 'Vue satellite', 'ctl.mapView': 'Vue carte',
       'app.title': 'Distributeurs automatiques', 'filter.all': 'Tous', 'filter.none': 'Aucun', 'filter.aria': 'Filtrer par type',
       'loading': 'Chargement des distributeurs…', 'add.hint': 'Touchez la carte à l’endroit du distributeur', 'cancel': 'Annuler',
       'count.all': '{n} distributeurs', 'count.some': '{n} sur {total} distributeurs',
@@ -160,6 +163,7 @@
     },
 
     es: {
+      'ctl.satellite': 'Vista de satélite', 'ctl.mapView': 'Vista de mapa',
       'app.title': 'Máquinas expendedoras', 'filter.all': 'Todas', 'filter.none': 'Ninguna', 'filter.aria': 'Filtrar por tipo',
       'loading': 'Cargando máquinas expendedoras…', 'add.hint': 'Toca el mapa donde está la máquina', 'cancel': 'Cancelar',
       'count.all': '{n} máquinas', 'count.some': '{n} de {total} máquinas',
@@ -208,6 +212,7 @@
     },
 
     it: {
+      'ctl.satellite': 'Vista satellite', 'ctl.mapView': 'Vista mappa',
       'app.title': 'Distributori automatici', 'filter.all': 'Tutti', 'filter.none': 'Nessuno', 'filter.aria': 'Filtra per tipo',
       'loading': 'Caricamento dei distributori…', 'add.hint': 'Tocca la mappa dove si trova il distributore', 'cancel': 'Annulla',
       'count.all': '{n} distributori', 'count.some': '{n} di {total} distributori',
@@ -256,6 +261,7 @@
     },
 
     nl: {
+      'ctl.satellite': 'Satellietweergave', 'ctl.mapView': 'Kaartweergave',
       'app.title': 'Automaten', 'filter.all': 'Alle', 'filter.none': 'Geen', 'filter.aria': 'Filteren op soort',
       'loading': 'Automaten laden…', 'add.hint': 'Tik op de kaart waar de automaat staat', 'cancel': 'Annuleren',
       'count.all': '{n} automaten', 'count.some': '{n} van {total} automaten',
