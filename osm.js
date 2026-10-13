@@ -259,9 +259,28 @@
       .map((e) => ({ id: e.id, lat: e.lat, lon: e.lon, tags: e.tags, url: `${cfg.web}/node/${e.id}` }));
   }
 
+  /** Fetches one vending machine by type/id for shared links. Returns { lat, lon, tags } or null. */
+  async function fetchElement(type, id) {
+    if (!/^(node|way)$/.test(type) || !/^\d+$/.test(String(id))) return null;
+    const path = type === 'node' ? `/api/0.6/node/${id}.json` : `/api/0.6/way/${id}/full.json`;
+    const res = await fetch(cfg.api + path);
+    if (!res.ok) return null; // deleted (410) or unknown (404)
+    const els = (await res.json()).elements || [];
+    const el = els.find((e) => e.type === type && String(e.id) === String(id));
+    if (!el) return null;
+    if (type === 'node') return { lat: el.lat, lon: el.lon, tags: el.tags || {} };
+    const nodes = els.filter((e) => e.type === 'node');
+    if (!nodes.length) return null;
+    return {
+      lat: nodes.reduce((a, n) => a + n.lat, 0) / nodes.length,
+      lon: nodes.reduce((a, n) => a + n.lon, 0) / nodes.length,
+      tags: el.tags || {},
+    };
+  }
+
   window.OSMClient = {
     isDev, isConfigured, isLoggedIn, login, resume, logout, currentUser,
-    createNode, createNote, nearbyVending,
+    createNode, createNote, nearbyVending, fetchElement,
     web: cfg.web, siteUrl: SITE_URL, hashtag: HASHTAG, appName: APP_NAME,
   };
 })();

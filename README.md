@@ -8,6 +8,20 @@ A static map of **vending machines** (`amenity=vending_machine`) from [OpenStree
 
 Features: marker clustering, filter panel with 9 groups covering the `vending=*` values used worldwide (see [docs/vending-values.md](docs/vending-values.md); synonyms like `snack`/`snacks` are merged, `drinks;sweets` counts for both), per-type colored emoji markers, popups with operator/brand/payment/opening hours/level/note and *View/Edit on OSM* links, "Locate me", data timestamp + total count, mobile layout with a collapsible panel.
 
+## Shareable links
+
+The address bar always reflects what you see, OSM-style, so you can copy it at any time:
+
+```
+https://kibubu.github.io/osm-vending-map/#map=17/51.12544/9.28142&m=node/11986973786
+                                          zoom/lat/lon          selected machine
+```
+
+- `map=` updates as you pan and zoom (without filling the browser history).
+- `m=` is added while a machine's popup is open and removed when you close it.
+- Every popup has a **🔗 Share** link: it opens the share sheet on phones and copies the link elsewhere.
+- Opening a link restores the view and opens that machine's popup. If the machine is outside the loaded data, it's fetched from the OSM API. If it was deleted from OSM, a message says so. It also opens if the visitor's own filter hides that category.
+
 ## Outside the prebuilt region (live loading)
 
 The prebuilt `data/vending.geojson` covers the configured region and loads instantly. When you move the map elsewhere (zoom 10 or closer), the page asks the Overpass API for the machines in view and adds them to the map, filters and counts. To be polite to the shared Overpass servers:

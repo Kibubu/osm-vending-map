@@ -126,6 +126,7 @@
       <div class="links">
         <a href="https://www.openstreetmap.org/${type}/${id}" target="_blank" rel="noopener">View on OSM</a>
         <a href="https://www.openstreetmap.org/edit?${type}=${id}" target="_blank" rel="noopener">Edit on OSM</a>
+        <a href="#" class="share-link" data-id="${type}/${id}">🔗 Share</a>
       </div>
     </div>`;
   }
@@ -632,6 +633,7 @@
 
   // ---------- Machine store (prebuilt file + live Overpass + own uploads) ----------
   const seenIds = new Set();
+  const entryById = new Map();
   const counts = {};
   const KEEP_KEYS = ['vending', 'name', 'operator', 'brand', 'opening_hours', 'level', 'note'];
 
@@ -643,8 +645,10 @@
     cats.forEach((c) => { counts[c] = (counts[c] || 0) + 1; });
     const marker = L.marker([lat, lon], { icon: iconFor(cats[0]), title: props.name || props.vending || '' });
     marker.bindPopup(() => popupHtml(props, cats), { maxWidth: 300 });
-    const entry = { marker, cats };
+    marker._vmId = id;
+    const entry = { id, marker, cats, props };
     entries.push(entry);
+    entryById.set(id, entry);
     return entry;
   }
 
@@ -782,6 +786,129 @@
 
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && addMode) setAddMode(false); });
 
+  // ---------- Shareable links (#map=zoom/lat/lon&m=node/123) ----------
+  let selectedId = null;
+  let hashTimer = null;
+  let hashReady = false;
+
+  function parseHash() {
+    const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+    const out = {};
+    const m = (h.get('map') || '').split('/').map(Number);
+    if (m.length === 3 && m.every(Number.isFinite) && Math.abs(m[1]) <= 90 && Math.abs(m[2]) <= 180) {
+      out.zoom = Math.min(19, Math.max(2, Math.round(m[0])));
+      out.lat = m[1];
+      out.lon = m[2];
+    }
+    const sel = h.get('m');
+    if (sel && /^(node|way|relation)\/\d+$/.test(sel)) out.selected = sel;
+    return out;
+  }
+
+  function hashFor(zoom, lat, lon, sel) {
+    return `#map=${zoom}/${lat.toFixed(5)}/${lon.toFixed(5)}${sel ? `&m=${sel}` : ''}`;
+  }
+
+  /** Keeps the address bar in sync with the view, so it can be copied at any time. */
+  function updateHash() {
+    if (!hashReady) return;
+    clearTimeout(hashTimer);
+    hashTimer = setTimeout(() => {
+      const c = map.getCenter();
+      const h = hashFor(map.getZoom(), c.lat, c.lng, selectedId);
+      if (location.hash !== h) history.replaceState(history.state, '', location.pathname + location.search + h);
+    }, 200);
+  }
+
+  function shareUrlFor(id) {
+    const e = entryById.get(id);
+    const ll = e ? e.marker.getLatLng() : map.getCenter();
+    return location.origin + location.pathname + location.search + hashFor(Math.max(map.getZoom(), 17), ll.lat, ll.lng, id);
+  }
+
+  map.on('moveend', updateHash);
+  map.on('popupopen', (e) => {
+    const id = (e.popup._source && e.popup._source._vmId) || e.popup._vmId;
+    if (id) { selectedId = id; updateHash(); }
+  });
+  map.on('popupclose', (e) => {
+    const id = (e.popup._source && e.popup._source._vmId) || e.popup._vmId;
+    if (id && id === selectedId) { selectedId = null; updateHash(); }
+  });
+
+  // Share button inside machine popups: native share sheet on phones, clipboard elsewhere.
+  document.addEventListener('click', async (ev) => {
+    const a = ev.target.closest && ev.target.closest('.share-link');
+    if (!a) return;
+    ev.preventDefault();
+    const url = shareUrlFor(a.dataset.id);
+    const e = entryById.get(a.dataset.id);
+    const title = (e && (e.props.name || e.props.brand)) || 'Vending machine';
+    try {
+      if (navigator.share && window.matchMedia('(pointer: coarse)').matches) {
+        await navigator.share({ title, url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      a.textContent = '✓ Link copied';
+    } catch (err) {
+      if (err && err.name === 'AbortError') return; // share sheet dismissed
+      window.prompt('Copy this link:', url);
+    }
+    setTimeout(() => { a.textContent = '🔗 Share'; }, 2000);
+  });
+
+  /** Opens the popup of a machine by id, loading it from OSM first if it isn't on the map yet. */
+  async function selectMachine(id, fly) {
+    let e = entryById.get(id);
+    if (!e) {
+      const [type, osmId] = id.split('/');
+      try {
+        const el = await OSMClient.fetchElement(type, osmId);
+        if (el && el.tags.amenity === 'vending_machine') {
+          const props = { osm_type: type, osm_id: Number(osmId) };
+          for (const k of Object.keys(el.tags)) if (KEEP_KEYS.includes(k) || k.startsWith('payment:')) props[k] = el.tags[k];
+          e = addMachine(id, el.lat, el.lon, props);
+          if (e) showAdded([e]);
+        }
+      } catch (err) { console.warn('Could not load shared machine', err); }
+    }
+    if (!e) {
+      showError('This vending machine could not be found — it may have been removed from OpenStreetMap.', false);
+      return;
+    }
+    selectedId = id;
+    if (fly) map.setView(e.marker.getLatLng(), Math.max(map.getZoom(), 17), { animate: false });
+    const standalone = () => {
+      const pop = L.popup({ maxWidth: 300 }).setLatLng(e.marker.getLatLng()).setContent(popupHtml(e.props, e.cats));
+      pop._vmId = id;
+      pop.openOn(map);
+      updateHash();
+    };
+    if (!cluster.hasLayer(e.marker)) { standalone(); return; } // hidden by the visitor's own filter
+    // zoomToShowLayer doesn't always call back after spiderfying close markers, so we also
+    // listen for 'spiderfied' and fall back to a timer; whichever comes first opens the popup.
+    let opened = false;
+    const open = () => {
+      if (opened) return;
+      opened = true;
+      if (e.marker._icon) e.marker.openPopup(); else standalone();
+    };
+    cluster.once('spiderfied', () => setTimeout(open, 50));
+    cluster.zoomToShowLayer(e.marker, open);
+    setTimeout(open, 1500);
+  }
+
+  /** Applies a pasted/opened link. Returns true if the hash set the view. */
+  function applyHash() {
+    const h = parseHash();
+    let setView = false;
+    if (h.zoom != null) { map.setView([h.lat, h.lon], h.zoom, { animate: false }); setView = true; }
+    if (h.selected) selectMachine(h.selected, !setView);
+    return setView;
+  }
+  window.addEventListener('hashchange', () => { applyHash(); });
+
   // ---------- Overlays ----------
   function showError(msg, retry) {
     const box = $('error');
@@ -825,7 +952,10 @@
       $('stamp').title = meta.region ? `Region: ${meta.region}` : '';
       markPrebuilt(meta.bbox);
 
-      if (entries.length) {
+      const fromLink = applyHash();
+      if (fromLink) {
+        // view came from a shared link
+      } else if (entries.length) {
         map.fitBounds(L.latLngBounds(entries.map((e) => e.marker.getLatLng())), { padding: [30, 30], maxZoom: 16, animate: false });
       } else if (Array.isArray(meta.bbox) && meta.bbox.length === 4) {
         const [s, w, n, e] = meta.bbox;
@@ -839,7 +969,13 @@
     }
     resumeAfterLogin();
     // Live loading starts with the first map move (not on page load), to spare Overpass.
-    if (!liveHooked) { liveHooked = true; map.on('moveend', scheduleLive); }
+    if (!liveHooked) {
+      liveHooked = true;
+      map.on('moveend', scheduleLive);
+      if (location.hash) scheduleLive(); // opened via a link: load the area it points to
+    }
+    hashReady = true;
+    updateHash();
   }
 
   load();
