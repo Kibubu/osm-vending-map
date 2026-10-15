@@ -380,6 +380,190 @@
   });
   map.addControl(new BasemapControl());
 
+  // ---------- Outbox button + panel ----------
+  let renderOutbox = null;
+  const OutboxControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd() {
+      const wrap = L.DomUtil.create('div', 'leaflet-bar leaflet-control outbox-ctl');
+      const btn = L.DomUtil.create('button', 'locate-btn outbox-btn', wrap);
+      btn.type = 'button';
+      btn.innerHTML = '📤<span class="badge"></span>';
+      btn.addEventListener('click', () => openOutbox());
+      L.DomEvent.disableClickPropagation(wrap);
+      this._wrap = wrap;
+      this._btn = btn;
+      return wrap;
+    },
+  });
+  const outboxCtl = new OutboxControl();
+  map.addControl(outboxCtl);
+
+  const STATUS_CLASS = { failed: 'warn', interrupted: 'warn', pending: '', uploading: 'busy' };
+  let obFlash = null; // success message shown at the top after an entry left the list
+
+  renderOutbox = function () {
+    const list = outboxAll();
+    const wrap = outboxCtl._wrap, btn = outboxCtl._btn;
+    wrap.style.display = list.length ? '' : 'none';
+    btn.querySelector('.badge').textContent = list.length ? String(list.length) : '';
+    btn.title = t('outbox.btn', { n: list.length });
+    btn.setAttribute('aria-label', btn.title);
+    const panel = $('outbox');
+    if (!panel.hidden) renderOutboxPanel();
+  };
+
+  function renderOutboxPanel() {
+    const panel = $('outbox');
+    const list = outboxAll().sort((a, b) => (a.created < b.created ? 1 : -1));
+    const dateFmt = (iso) => { try { return new Date(iso).toLocaleString(I18N.lang, { dateStyle: 'short', timeStyle: 'short' }); } catch { return iso; } };
+    const items = list.map((x) => {
+      const what = (x.tags.vending || '').split(';').filter(Boolean).map(itemLabel).join(', ') || t('popup.title');
+      const err = x.lastError;
+      const errLine = err ? `${err.offline ? t('outbox.offline') + ' ' : ''}${err.status ? 'HTTP ' + err.status + ' · ' : ''}${err.message}` : '';
+      const log = (x.log || []).slice().reverse().map((l) =>
+        `<li><time>${esc(dateFmt(l.at))}</time> ${esc(l.step || '?')}${l.status ? ' · HTTP ' + l.status : ''}${l.offline ? ' · offline' : ''}` +
+        `${l.changesetId ? ' · changeset ' + esc(l.changesetId) : ''}<br>${esc(l.message)}</li>`).join('');
+      return `<li class="ob-item" data-id="${esc(x.id)}">
+        <div class="ob-head"><strong>${esc(what)}</strong>
+          <span class="ob-status ${STATUS_CLASS[x.status] || ''}">${esc(t(`outbox.status.${x.status}`))}</span></div>
+        <div class="ob-meta">${x.lat.toFixed(5)}, ${x.lng.toFixed(5)} · ${esc(t('outbox.savedAt', { date: dateFmt(x.created) }))} · ${esc(t('outbox.attempts', { n: x.attempts || 0 }))}</div>
+        ${x.tags.operator || x.tags.brand ? `<div class="ob-meta">${esc([x.tags.operator, x.tags.brand].filter(Boolean).join(' · '))}</div>` : ''}
+        ${errLine ? `<div class="ob-err"><b>${esc(t('outbox.lastError'))}:</b> ${esc(errLine)}</div>` : ''}
+        ${x.suspect ? `<div class="ob-hint">${esc(t('outbox.maybe'))}</div>` : ''}
+        ${log ? `<details><summary>${esc(t('outbox.log'))} (${(x.log || []).length})</summary><ol class="ob-log">${log}</ol></details>` : ''}
+        <div class="ob-actions">
+          <button type="button" data-act="retry" class="primary">${esc(t('outbox.retry'))}</button>
+          <button type="button" data-act="edit">${esc(t('outbox.edit'))}</button>
+          <button type="button" data-act="show">${esc(t('outbox.show'))}</button>
+          <button type="button" data-act="note">${esc(t('outbox.note'))}</button>
+          <button type="button" data-act="copy">${esc(t('outbox.copy'))}</button>
+          <button type="button" data-act="discard" class="danger">${esc(t('outbox.discard'))}</button>
+        </div>
+        <p class="ob-msg" role="status" hidden></p>
+      </li>`;
+    }).join('');
+    panel.innerHTML = `<div class="ob-box" role="dialog" aria-modal="true" aria-labelledby="ob-title">
+      <div class="ob-top"><h2 id="ob-title">📤 ${esc(t('outbox.title'))}</h2>
+        <button type="button" class="ob-close" data-act="close" aria-label="${esc(t('outbox.close'))}">✕</button></div>
+      ${obFlash ? `<p class="ob-msg status ok ob-flash" role="status">${obFlash}</p>` : ''}
+      <p class="muted">${esc(list.length ? t('outbox.intro') : t('outbox.empty'))}</p>
+      <ul class="ob-list">${items}</ul>
+      ${list.length ? `<div class="ob-footer">
+        ${list.length > 1 ? `<button type="button" data-act="retry-all" class="primary">${esc(t('outbox.retryAll'))}</button>` : ''}
+        <button type="button" data-act="download">${esc(t('outbox.download'))}</button></div>` : ''}
+    </div>`;
+  }
+
+  function openOutbox() { $('outbox').hidden = false; renderOutboxPanel(); }
+  function closeOutbox() { $('outbox').hidden = true; obFlash = null; }
+
+  function obMsg(li, html, kind) {
+    const m = li && li.querySelector('.ob-msg');
+    if (!m) return;
+    m.hidden = !html;
+    m.className = 'ob-msg status ' + (kind || '');
+    m.innerHTML = html || '';
+  }
+
+  async function retryItem(id, li) {
+    const x = outboxGet(id);
+    if (!x) return false;
+    if (!OSMClient.isLoggedIn()) {
+      // Login first; afterwards the summary opens so the user confirms the upload.
+      outboxSave({ id, lat: x.lat, lng: x.lng, tags: x.tags, comment: x.comment, status: 'pending' });
+      await OSMClient.login({ action: 'createNode', lat: x.lat, lng: x.lng, tags: x.tags, comment: x.comment, outboxId: id });
+      return false;
+    }
+    obMsg(li, esc(t('review.uploading')), 'busy');
+    try {
+      const res = await uploadWithOutbox({ id, lat: x.lat, lng: x.lng, tags: x.tags, comment: x.comment });
+      if (res.already) {
+        obFlash = tHtml('outbox.already', { link: linkTo(res.already.url, t('review.node', { id: res.already.id })) });
+      } else {
+        addLocalMarker(x.lat, x.lng, x.tags, res.r.nodeId);
+        obFlash = tHtml('outbox.done', { link: linkTo(res.r.nodeUrl, t('review.node', { id: res.r.nodeId })) });
+      }
+      if (!$('outbox').hidden) renderOutboxPanel();
+      return true;
+    } catch (e) {
+      renderOutboxPanel();
+      const fresh = $('outbox').querySelector(`.ob-item[data-id="${CSS.escape(id)}"]`);
+      obMsg(fresh, esc(e.message), 'warn');
+      return false;
+    }
+  }
+
+  $('outbox').addEventListener('click', async (ev) => {
+    if (ev.target.id === 'outbox') { closeOutbox(); return; } // click on the backdrop
+    const btn = ev.target.closest('button[data-act]');
+    if (!btn) return;
+    const act = btn.dataset.act;
+    const li = btn.closest('.ob-item');
+    const id = li && li.dataset.id;
+    const x = id && outboxGet(id);
+    if (act === 'close') { closeOutbox(); return; }
+    if (act === 'download') {
+      const blob = new Blob([JSON.stringify({ exported: new Date().toISOString(), site: OSMClient.siteUrl, items: outboxAll() }, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `vending-outbox-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      return;
+    }
+    if (act === 'retry-all') {
+      btn.disabled = true;
+      for (const item of outboxAll()) {
+        const row = $('outbox').querySelector(`.ob-item[data-id="${CSS.escape(item.id)}"]`);
+        // eslint-disable-next-line no-await-in-loop
+        await retryItem(item.id, row);
+      }
+      btn.disabled = false;
+      return;
+    }
+    if (!x) return;
+    if (act === 'retry') { btn.disabled = true; await retryItem(id, li); btn.disabled = false; return; }
+    if (act === 'edit' || act === 'show') {
+      closeOutbox();
+      map.setView([x.lat, x.lng], 18, { animate: false });
+      if (act === 'show') {
+        const ring = L.circleMarker([x.lat, x.lng], { radius: 16, color: '#d1242f', weight: 3, fillOpacity: 0.1 }).addTo(map);
+        setTimeout(() => map.removeLayer(ring), 4000);
+        return;
+      }
+      map.panBy([0, -Math.round(map.getSize().y * 0.35)], { animate: false });
+      const form = placeDraft(L.latLng(x.lat, x.lng));
+      draft._outboxId = id;
+      form.prefill(x.tags);
+      return;
+    }
+    if (act === 'note') {
+      btn.disabled = true;
+      try {
+        const note = await OSMClient.createNote(x.lat, x.lng, noteTextFor(x.tags));
+        obFlash = tHtml('outbox.noteDone', { link: linkTo(note.url, note.id ? t('form.noteLink', { id: note.id }) : t('form.noteLinkNoId')) });
+        outboxRemove(id);
+      } catch (e) {
+        btn.disabled = false;
+        obMsg(li, esc(t('form.noteFailed', { msg: e.message })), 'warn');
+      }
+      return;
+    }
+    if (act === 'copy') {
+      const text = [`${x.lat.toFixed(7)}, ${x.lng.toFixed(7)}`, ...Object.entries(x.tags).map(([k, v]) => `${k}=${v}`)].join('\n');
+      try { await navigator.clipboard.writeText(text); btn.textContent = t('outbox.copied'); } catch { window.prompt(t('popup.copyPrompt'), text); }
+      setTimeout(() => { btn.textContent = t('outbox.copy'); }, 2000);
+      return;
+    }
+    if (act === 'discard') {
+      if (!btn.classList.contains('confirm')) { btn.classList.add('confirm'); btn.textContent = t('outbox.confirm'); return; }
+      outboxRemove(id);
+    }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('outbox').hidden) closeOutbox(); });
+  I18N.onChange(() => renderOutbox());
+
   /** Re-renders everything language-dependent after the visitor switches language. */
   I18N.onChange(() => {
     map.removeControl(zoomCtl);
@@ -626,7 +810,13 @@
     }
     form.addEventListener('submit', (ev) => { ev.preventDefault(); openReview(); });
     q('.back').addEventListener('click', () => { setStatus(review, ''); show(form); });
-    q('.cancel').addEventListener('click', () => { map.closePopup(); removeDraft(); });
+    q('.cancel').addEventListener('click', () => {
+      // An entry that was only parked for the login and never tried is dropped; failed ones stay in the outbox.
+      const item = draft && draft._outboxId && outboxGet(draft._outboxId);
+      if (item && !item.attempts && item.status === 'pending') outboxRemove(item.id);
+      map.closePopup();
+      removeDraft();
+    });
 
     /** Fills the form from OSM tags (used when coming back from the OSM login). */
     function prefill(tags) {
@@ -700,23 +890,31 @@
     q('.upload').addEventListener('click', async () => {
       const btn = q('.upload');
       btn.disabled = true;
+      const tags = collectTags();
+      const { lat, lng } = draft.getLatLng();
+      const comment = changesetComment(tags);
       try {
-        const tags = collectTags();
-        const { lat, lng } = draft.getLatLng();
         if (!OSMClient.isLoggedIn()) {
-          // Leaves the page; the upload continues automatically after the OSM login (resumeAfterLogin).
+          // Keep a copy in the outbox in case the login round trip goes wrong, then leave for OSM.
+          const item = outboxSave({ id: draft._outboxId, lat, lng, tags, comment, status: 'pending' });
+          draft._outboxId = item.id;
           setStatus(review, esc(t('review.toOsm')));
-          await OSMClient.login({ action: 'createNode', lat, lng, tags, comment: changesetComment(tags) });
+          await OSMClient.login({ action: 'createNode', lat, lng, tags, comment, outboxId: item.id });
           return;
         }
         setStatus(review, esc(t('review.uploading')));
-        const r = await OSMClient.createNode(lat, lng, tags, changesetComment(tags));
-        addLocalMarker(lat, lng, tags, r.nodeId);
-        finish(addedHtml(r));
+        const res = await uploadWithOutbox({ id: draft._outboxId, lat, lng, tags, comment });
+        if (res.already) {
+          finish(tHtml('outbox.already', { link: linkTo(res.already.url, t('review.node', { id: res.already.id })) }));
+        } else {
+          addLocalMarker(lat, lng, tags, res.r.nodeId);
+          finish(addedHtml(res.r));
+        }
       } catch (e) {
         console.error(e);
+        if (e.outboxId) draft._outboxId = e.outboxId;
         btn.disabled = false;
-        setStatus(review, esc(e.message), 'warn');
+        setStatus(review, `${esc(e.message)}<br><strong>${esc(t('outbox.saved'))}</strong>`, 'warn');
         renderAuth();
       }
     });
@@ -745,6 +943,116 @@
     return { el, updateCoords: updateLinks, prefill, openReview, relocalize };
   }
 
+  // ---------- Outbox: machines entered here that are not (yet) on OSM ----------
+  // Saved to localStorage *before* each upload attempt and removed only after OSM confirms the
+  // new node, so nothing typed in is lost when an upload fails, the tab closes or the login breaks.
+  // Each entry keeps a log of every attempt (time, step, HTTP status, OSM message).
+  const OUTBOX_KEY = 'vm-outbox';
+  function outboxAll() {
+    try { const v = JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+  }
+  function outboxWrite(list) {
+    try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(list)); } catch (e) { console.error('[outbox] could not save', e); }
+    if (typeof renderOutbox === 'function') renderOutbox();
+  }
+  const outboxGet = (id) => outboxAll().find((x) => x.id === id) || null;
+  function outboxPut(item) {
+    const list = outboxAll().filter((x) => x.id !== item.id);
+    list.push(item);
+    outboxWrite(list);
+    return item;
+  }
+  function outboxRemove(id) { outboxWrite(outboxAll().filter((x) => x.id !== id)); }
+
+  /** Creates or updates an entry with the latest data. */
+  function outboxSave({ id, lat, lng, tags, comment, status }) {
+    const now = new Date().toISOString();
+    const prev = id ? outboxGet(id) : null;
+    const item = Object.assign({ id: id || `vm-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`, created: now, attempts: 0, log: [] },
+      prev || {}, { lat, lng, tags, comment, updated: now, status: status || (prev && prev.status) || 'pending' });
+    return outboxPut(item);
+  }
+
+  function describeError(e) {
+    return {
+      at: new Date().toISOString(),
+      step: e.step || null,
+      status: e.status || null,
+      message: String(e.message || e).slice(0, 400),
+      offline: Boolean(e.offline || !navigator.onLine),
+      changesetId: e.changesetId || null,
+      maybeCreated: Boolean(e.maybeCreated),
+    };
+  }
+
+  function outboxLog(id, e) {
+    const item = outboxGet(id);
+    if (!item) return null;
+    const entry = describeError(e);
+    item.log = (item.log || []).concat(entry).slice(-20);
+    item.lastError = entry;
+    item.status = 'failed';
+    if (entry.maybeCreated) item.suspect = true;
+    console.error('[outbox] upload failed', { id, ...entry });
+    return outboxPut(item);
+  }
+
+  // Entries still marked "uploading" from an earlier visit were interrupted (tab closed, crash…).
+  (function markInterrupted() {
+    const list = outboxAll();
+    let changed = false;
+    list.forEach((x) => { if (x.status === 'uploading') { x.status = 'interrupted'; x.suspect = true; changed = true; } });
+    if (changed) outboxWrite(list);
+  })();
+  renderOutbox();
+
+  /** Looks for an identical machine that may already have been created by an earlier attempt. */
+  async function findExisting(lat, lng, tags) {
+    try {
+      const here = L.latLng(lat, lng);
+      const near = await OSMClient.nearbyVending(lat, lng, 10);
+      return near.find((n) => here.distanceTo([n.lat, n.lon]) < 6 && (n.tags.vending || '') === (tags.vending || '')) || null;
+    } catch { return null; }
+  }
+
+  /** The one place uploads happen: saves to the outbox first, removes it only after success. */
+  async function uploadWithOutbox({ id, lat, lng, tags, comment }) {
+    let item = outboxSave({ id, lat, lng, tags, comment, status: 'uploading' });
+    if (item.attempts > 0 || item.suspect) {
+      const dup = await findExisting(lat, lng, tags);
+      if (dup) { outboxRemove(item.id); return { already: dup }; }
+    }
+    item.attempts += 1;
+    item.lastAttempt = new Date().toISOString();
+    outboxPut(item);
+    try {
+      const r = await OSMClient.createNode(lat, lng, tags, comment);
+      outboxRemove(item.id);
+      return { r };
+    } catch (e) {
+      outboxLog(item.id, e);
+      e.outboxId = item.id;
+      throw e;
+    }
+  }
+
+  const linkTo = (url, text) => `<a href="${url}" target="_blank" rel="noopener">${esc(text)}</a>`;
+  /** Replaces {placeholder} in an escaped translation with ready-made HTML. */
+  function tHtml(key, html) {
+    const names = Object.keys(html);
+    const marks = Object.fromEntries(names.map((k, i) => [k, String.fromCharCode(1 + i)]));
+    let out = esc(t(key, marks));
+    names.forEach((k, i) => { out = out.split(String.fromCharCode(1 + i)).join(html[k]); });
+    return out;
+  }
+
+  function noteTextFor(tags) {
+    const lines = ['Missing vending machine here. Suggested tags:'];
+    for (const [k, v] of Object.entries(tags)) lines.push(`${k}=${v}`);
+    lines.push('', `(reported via ${OSMClient.siteUrl})`);
+    return lines.join('\n');
+  }
+
   /** "✅ Added! Node 123 in changeset 456 …" with links, in the current language. */
   function addedHtml(r) {
     const node = `<a href="${r.nodeUrl}" target="_blank" rel="noopener">${esc(t('review.node', { id: r.nodeId }))}</a>`;
@@ -759,11 +1067,12 @@
       res = await OSMClient.resume();
     } catch (e) {
       const p = e.payload;
+      if (p && p.outboxId) { e.step = e.step || 'login'; outboxLog(p.outboxId, e); }
       if (p && p.lat != null) {
         map.setView([p.lat, p.lng], 18);
         L.popup({ maxWidth: 300 }).setLatLng([p.lat, p.lng])
           .setContent(`<div class="vm-popup add-form"><h3>${esc(t('review.notUploaded'))}</h3><p class="status warn">${esc(e.message)}</p>` +
-            `<p class="muted small">${esc(t('review.nothingChanged'))}</p></div>`).openOn(map);
+            `<p class="muted small">${esc(t('review.nothingChanged'))}${p.outboxId ? ' ' + esc(t('outbox.saved')) : ''}</p></div>`).openOn(map);
       } else {
         showError(e.message, false);
       }
@@ -776,6 +1085,7 @@
     map.setView([lat, lng], 18, { animate: false });
     map.panBy([0, -Math.round(map.getSize().y * 0.35)], { animate: false });
     const form = placeDraft(L.latLng(lat, lng));
+    draft._outboxId = res.payload.outboxId || null;
     form.prefill(tags);
     form.openReview();
 

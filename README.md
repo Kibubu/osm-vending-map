@@ -53,6 +53,18 @@ Tap **＋** and then the map, or right-click / long-press. Drag the red pin to t
 
 Every upload carries `created_by=osm-vending-map …`, a descriptive `comment` and `hashtags=#osm-vending-map`. You can watch all edits made through the site on [OSMCha](https://osmcha.org/?filters=%7B%22hashtags%22%3A%5B%7B%22label%22%3A%22osm-vending-map%22%2C%22value%22%3A%22osm-vending-map%22%7D%5D%7D) (filter: hashtag `osm-vending-map`).
 
+### When an upload fails: the outbox (📤)
+
+Nothing you enter is lost. Every machine is saved in the browser (localStorage) **before** the upload starts and removed only after OSM confirms the new node. If anything goes wrong (server error, expired login, a cancelled login round trip, no network, or the tab closing mid-upload), it stays in the outbox:
+
+- A **📤 button with a counter** appears in the left control column whenever something is waiting.
+- Each entry shows what it is, where, when it was saved, the number of attempts, the **last error** (HTTP status and OSM's message) and a **log** of every attempt: time, step (`changeset/create`, `changeset/upload`, `login`), HTTP status, changeset id and an offline flag.
+- Actions: **Retry upload**, **Edit** (reopens the form, prefilled), **Show on map**, **Send as note** (no account needed), **Copy** (coordinates and tags) and **Discard** (asks twice). **Retry all** and **Download log (JSON)** cover the whole list.
+- **No duplicates:** if an attempt might have reached OSM (network drop during the upload, or an interrupted tab), the entry is flagged. Every retry first checks OSM for an identical machine within a few metres, and if one exists, it removes the entry instead of uploading again.
+- Errors are also written to the browser console as `[outbox] upload failed …`.
+
+The outbox lives in that browser only. Use *Download log* to keep or share it.
+
 ### One-time setup for direct upload (OAuth app)
 
 1. Log in at openstreetmap.org → **My Settings → OAuth 2 applications → Register new application** (or go to https://www.openstreetmap.org/oauth2/applications/new).

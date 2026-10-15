@@ -168,9 +168,17 @@
     if (res.status === 401) {
       store.del(TOKEN_KEY);
       user = null;
-      throw new Error(tr('osm.expired', 'Your OSM login expired — please log in again.'));
+      const err = new Error(tr('osm.expired', 'Your OSM login expired — please log in again.'));
+      err.status = 401;
+      throw err;
     }
-    if (!res.ok) throw new Error(`OSM API error ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    if (!res.ok) {
+      const body = (await res.text()).slice(0, 300);
+      const err = new Error(`OSM API error ${res.status}: ${body}`);
+      err.status = res.status;
+      err.body = body;
+      throw err;
+    }
     return res;
   }
 
@@ -207,29 +215,49 @@
       hashtags: HASHTAG,
       host: SITE_URL,
     };
-    const csRes = await api('/api/0.6/changeset/create', {
+    // Every failure is tagged with the step it happened in (and the changeset, if one was opened),
+    // so the app can log it and decide whether a retry might create a duplicate.
+    const step = async (name, fn, extra) => {
+      try { return await fn(); } catch (e) {
+        e.step = name;
+        if (extra) Object.assign(e, extra);
+        if (!navigator.onLine) e.offline = true;
+        throw e;
+      }
+    };
+    const csRes = await step('changeset/create', () => api('/api/0.6/changeset/create', {
       method: 'PUT',
       headers: { 'Content-Type': 'text/xml' },
       body: `<osm><changeset>${tagsXml(csTags)}</changeset></osm>`,
-    });
+    }));
     const changesetId = (await csRes.text()).trim();
     try {
       const change = `<osmChange version="0.6" generator="${APP_NAME}"><create>` +
         `<node id="-1" changeset="${changesetId}" lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}">${tagsXml(tags)}</node>` +
         `</create></osmChange>`;
-      const diff = await api(`/api/0.6/changeset/${changesetId}/upload`, {
+      const diff = await step('changeset/upload', () => api(`/api/0.6/changeset/${changesetId}/upload`, {
         method: 'POST',
         headers: { 'Content-Type': 'text/xml' },
         body: change,
-      });
+      }), { changesetId });
       const doc = new DOMParser().parseFromString(await diff.text(), 'text/xml');
       const nodeId = doc.querySelector('node')?.getAttribute('new_id');
+      if (!nodeId) {
+        // The upload was accepted but the answer is unreadable: the node may exist.
+        const e = new Error('OSM accepted the upload but returned no node id.');
+        Object.assign(e, { step: 'changeset/upload', changesetId, maybeCreated: true });
+        throw e;
+      }
       return {
         nodeId,
         changesetId,
         nodeUrl: `${cfg.web}/node/${nodeId}`,
         changesetUrl: `${cfg.web}/changeset/${changesetId}`,
       };
+    } catch (e) {
+      // A network error during the upload means we can't know whether the node was created.
+      if (e.step === 'changeset/upload' && !e.status) e.maybeCreated = true;
+      throw e;
     } finally {
       api(`/api/0.6/changeset/${changesetId}/close`, { method: 'PUT' }).catch(() => {});
     }
