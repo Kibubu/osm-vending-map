@@ -822,6 +822,7 @@
   // The map is split into a grid of cells. When the view settles on cells we have no data for,
   // one Overpass query fetches them (debounced, one request at a time, cached for the session).
   const LIVE = {
+    enabled: false,        // live Overpass loading outside the prebuilt region (off: too slow in practice)
     cell: 0.2,             // degrees (~22 km north-south); cache unit
     block: 2,              // cells per side per request (0.4° ≈ 45 × 30 km) — small queries answer fast
     minZoom: 10,           // below this the area is too large to query politely
@@ -863,6 +864,10 @@
 
   // ---- per-cell cache in localStorage (instant revisits, also after reload) ----
   const CACHE_PREFIX = 'vm-cell:';
+  if (!LIVE.enabled) {
+    // Feature is off: free the storage used by earlier versions.
+    try { Object.keys(localStorage).filter((k) => k.startsWith(CACHE_PREFIX)).forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
+  }
   function cacheGet(key) {
     try {
       const raw = localStorage.getItem(CACHE_PREFIX + key);
@@ -909,6 +914,7 @@
   }
 
   function scheduleLive() {
+    if (!LIVE.enabled) return;
     clearTimeout(liveTimer);
     liveTimer = setTimeout(loadLive, LIVE.debounceMs);
   }

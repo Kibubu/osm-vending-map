@@ -37,16 +37,11 @@ https://kibubu.github.io/osm-vending-map/#map=17/51.12544/9.28142&m=node/1198697
 - Every popup has a **🔗 Share** link: it opens the share sheet on phones and copies the link elsewhere.
 - Opening a link restores the view and opens that machine's popup. If the machine is outside the loaded data, it's fetched from the OSM API. If it was deleted from OSM, a message says so. It also opens if the visitor's own filter hides that category.
 
-## Outside the prebuilt region (live loading)
+## Outside the prebuilt region
 
-The prebuilt `data/vending.geojson` covers the configured region and loads instantly. When you move the map elsewhere (zoom 10 or closer), the page asks the Overpass API for the machines in view:
+The map shows the machines of the prebuilt region (`data/vending.geojson`). Live loading from Overpass for other areas exists in the code but is **switched off** because it was too slow in practice. To turn it back on, set `LIVE.enabled = true` in `app.js`. It loads in small blocks, nearest first, and caches each area for 12 hours. To cover a bigger area permanently, enlarge `REGION_BBOX` instead (see *Change the region*).
 
-- **Progressive:** the missing area is split into small blocks (0.4° ≈ 45 × 30 km). They are requested nearest-to-centre first, two at a time, and each block's markers appear as soon as it arrives ("Loading… (2/6)").
-- **Cancelled when stale:** blocks you've panned away from are aborted.
-- **Cached:** each 0.2° cell is kept in the browser's localStorage for 12 hours, so revisits (also after a reload) are instant and cost no request.
-- **Polite:** nothing is queried on page load, requests start 0.4 s after the map stops, queries use a short server timeout and unsorted output (`out center qt`), and below zoom 10 a hint asks you to zoom in. If the main Overpass server fails, a second one is tried.
-
-Settings are in `app.js` → `LIVE` (cell/block size, concurrency, cache lifetime, endpoints).
+Shared links to a machine outside the region still work: that single machine is fetched directly from the OSM API.
 
 ## Adding missing machines
 
