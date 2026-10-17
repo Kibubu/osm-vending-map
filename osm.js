@@ -28,7 +28,7 @@
     dev: {
       web: 'https://master.apis.dev.openstreetmap.org',
       api: 'https://master.apis.dev.openstreetmap.org',
-      clientId: '',            // ← optional: Client ID from the dev server
+      clientId: 'fuY9JrJw19145JBKU5O9NkjN4Qf_rcfzDl1WRdcnds4', // dev-server OAuth2 client (PKCE, no secret)
     },
   };
   const APP_NAME = 'osm-vending-map';
