@@ -6,13 +6,10 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "fetch": "node scripts/fetch-data.mjs",
+    "tiles": "node scripts/build-tiles.mjs",
     "serve": "python3 -m http.server 8000"
   },
   "engines": {
     "node": ">=20"
-  },
-  "dependencies": {
-    "osmtogeojson": "3.0.0-beta.5"
   }
 }

@@ -1,11 +1,11 @@
 # osm-vending-map
 
-A static map of **vending machines** (`amenity=vending_machine`) from [OpenStreetMap](https://www.openstreetmap.org/), currently covering **Fritzlar and surroundings** (roughly Fritzlar, Homberg (Efze), Gudensberg, Felsberg, Bad Wildungen, Borken, Wabern and southern Kassel).
+A static map of **vending machines** (`amenity=vending_machine`) from [OpenStreetMap](https://www.openstreetmap.org/), covering **all of Europe**. It opens at Fritzlar and surroundings.
 
-- Pure static site (HTML/CSS/JS), no backend, no build step.
+- Pure static site (HTML/CSS/JS), no backend, no frontend build step.
 - [Leaflet 1.9.4](https://leafletjs.com/) + [Leaflet.markercluster 1.5.3](https://github.com/Leaflet/Leaflet.markercluster), self-hosted in `vendor/` (unchanged release files from unpkg, verified against their SRI hashes).
 - Works offline and on a weak mobile signal (service worker, see *Offline and weak signal*).
-- Data is prebuilt into `data/vending.geojson` by a nightly GitHub Action that queries the Overpass API.
+- Data is prebuilt nightly by a GitHub Action from Geofabrik's Europe extract and cut into small tiles that load as you move the map (see *Data tiles*).
 
 Features: marker clustering, filter panel with 9 groups covering the `vending=*` values used worldwide (see [docs/vending-values.md](docs/vending-values.md); synonyms like `snack`/`snacks` are merged, `drinks;sweets` counts for both), per-type colored emoji markers, popups with operator/brand/payment/opening hours/level/note and *View/Edit on OSM* links, "Locate me", data timestamp + total count, mobile layout with a collapsible panel.
 
@@ -20,7 +20,7 @@ The ⚡ button below it turns on *faster zooming*: base-map tiles are no longer 
 The site is built to open outdoors with a bad or no mobile signal:
 
 - **Service worker (`sw.js`).** After the first visit, the app (HTML, CSS, JS, Leaflet) comes from the phone's cache. The page is still fetched from the network first so updates arrive, but after 4 s without an answer the cached copy is used.
-- **Data.** `data/vending.geojson` is fetched from the network first. After 6 s without an answer (or with no network) the last downloaded copy is shown, and the footer says *offline copy*. A late answer still refreshes the cache for next time.
+- **Data.** The tile index (`tiles/index.json`) is fetched from the network first. After 6 s without an answer (or with no network) the last downloaded copy is used, and the footer says *offline copy*. A late answer still refreshes the cache for next time. Every data tile you have loaded is kept: a tile whose content hash is unchanged is never downloaded again, and without signal the last copy of a changed tile is shown.
 - **Map tiles.** Every tile you have looked at is kept (up to 3000, oldest dropped first) and served from the cache, so places you have viewed before work offline. Tiles older than 7 days are refreshed in the background. Nothing is downloaded ahead of time (OSM tile usage policy).
 - **First visit on a bad connection.** A *slow connection* hint appears after 8 s. After 45 s, or when the network is gone, an error with *Retry* is shown, and loading starts again by itself when the phone is back online.
 - **One host fewer.** Leaflet is served from this site instead of unpkg, which saves a DNS lookup and TLS handshake to another server.
@@ -52,11 +52,17 @@ https://kibubu.github.io/osm-vending-map/#map=17/51.12544/9.28142&m=node/1198697
 - Every popup has a **🔗 Share** link: it opens the share sheet on phones and copies the link elsewhere.
 - Opening a link restores the view and opens that machine's popup. If the machine is outside the loaded data, it's fetched from the OSM API. If it was deleted from OSM, a message says so. It also opens if the visitor's own filter hides that category.
 
-## Outside the prebuilt region
+## Data tiles
 
-The map shows the machines of the prebuilt region (`data/vending.geojson`). Live loading from Overpass for other areas exists in the code but is **switched off** because it was too slow in practice. To turn it back on, set `LIVE.enabled = true` in `app.js`. It loads in small blocks, nearest first, and caches each area for 12 hours. To cover a bigger area permanently, enlarge `REGION_BBOX` instead (see *Change the region*).
+All of Europe is too much to download at once on a phone (and too much for one Overpass query), so the data is split into a grid:
 
-Shared links to a machine outside the region still work: that single machine is fetched directly from the OSM API.
+- **`tiles/index.json`** (one small download, cached) lists every grid cell that has machines: `[level, i, j, count, hash]`. Cells are 0.25° (~28 × 18 km). Cells with more than 1000 machines (city centres) are split into quarters, down to ~1.7 km, so no single file gets big.
+- **`tiles/c/{level}_{i}_{j}.json`** holds the machines of one cell as `[id, lat, lon, tags]` rows (id like `n123`). Typically 1–15 KB gzipped.
+- **Zoomed out (below zoom 10)** the map shows how many machines each area has, straight from the index, with nothing else to download. Tap a number to zoom in there. These totals ignore the category filter.
+- **Zoomed in** the map loads the cells on screen, nearest to the centre first, three at a time. Cells that scroll out of view are cancelled. A ring of cells just outside the view is loaded afterwards, except on data saver or 2G/3G.
+- A cell's URL carries its content hash (`?h=…`), so after the nightly rebuild only cells that actually changed are downloaded again.
+
+Shared links to a machine that isn't in the data still work: that single machine is fetched directly from the OSM API.
 
 ## Adding missing machines
 
@@ -106,57 +112,50 @@ Until a Client ID is set, the upload button is disabled and visitors get the not
 | `land.html` | OAuth redirect target that hands the login code back to the map |
 | `sw.js` | Service worker: offline cache for the app, data and map tiles |
 | `vendor/` | Leaflet and Leaflet.markercluster (pinned release files) |
-| `data/vending.geojson` | Prebuilt data (one feature per line for readable diffs) |
-| `scripts/fetch-data.mjs` | Overpass → osmtogeojson → slim GeoJSON |
-| `.github/workflows/update-data.yml` | Nightly + manual data refresh, commits only on change |
+| `scripts/build-tiles.mjs` | OSM extract → osmium filter → data tiles in `tiles/` |
+| `.github/workflows/deploy.yml` | Nightly tile build + deploy to GitHub Pages (also on every push) |
+| `tiles/` | Generated, not in `main`. It lives on the `tiles` branch (one force-pushed commit) |
 
 ## Enable GitHub Pages
 
-1. Push the repo to GitHub (see below).
-2. **Settings → Pages → Build and deployment → Source: "Deploy from a branch"**, Branch: `main`, folder: `/ (root)` → Save.
-3. After a minute the site is at `https://<your-user>.github.io/osm-vending-map/`.
+1. Push the repo to GitHub.
+2. **Settings → Pages → Build and deployment → Source: "GitHub Actions"**.
+3. Actions tab → *Build data and deploy* → **Run workflow** (with *Rebuild the tiles* ticked) for the first data build.
+4. After it finishes, the site is at `https://<your-user>.github.io/osm-vending-map/`.
+
+The site is deployed by the workflow, not straight from the branch, because the generated tiles are not in `main`.
 
 ## Update the data
 
-**Automatically:** the workflow runs nightly at 02:17 UTC.
+**Automatically:** the workflow runs nightly at 03:17 UTC. It streams Geofabrik's `europe-latest.osm.pbf` (~35 GB) through `osmium tags-filter`, so nothing big is stored on the runner, and takes roughly 15–30 minutes. Ways and relations tagged as vending machines (very few) get their centre from Overpass by id. Then the tiles are force-pushed to the `tiles` branch as a single commit (no history build-up) and the site is deployed. Pushes to `main` deploy with the tiles from the last nightly build.
 
-**Manually:** Actions tab → *Update vending machine data* → **Run workflow**, or:
-
-```bash
-gh workflow run update-data.yml
-gh run watch
-```
-
-The workflow needs `permissions: contents: write` (already set in the file). If your repo/org restricts it, also check **Settings → Actions → General → Workflow permissions → Read and write**.
-
-The script only rewrites the file when the set of machines or their tags actually changed, so there is no nightly commit noise. The timestamp in the footer is therefore the OSM data timestamp of the last *change*.
-
-**Locally:**
+**Manually:** Actions tab → *Build data and deploy* → **Run workflow**, or:
 
 ```bash
-npm ci
-npm run fetch          # writes data/vending.geojson
-npm run serve          # http://localhost:8000
+gh workflow run deploy.yml -f rebuild=true
 ```
 
-Optional env vars for the script: `REGION_BBOX`, `REGION_NAME`, `OVERPASS_URLS` (comma-separated, tried in order), `OVERPASS_TIMEOUT`, `USER_AGENT`, `FORCE_WRITE=1`, `OVERPASS_INPUT` (convert a saved Overpass JSON response instead of querying).
+**Locally** (needs [osmium-tool](https://osmcode.org/osmium-tool/), e.g. `brew install osmium-tool`). Use a small extract:
+
+```bash
+npm run tiles -- --pbf https://download.geofabrik.de/europe/germany/hessen-latest.osm.pbf --region Hessen
+```
+
+```bash
+npm run serve
+```
+
+`--pbf` takes a URL or a local file. `--opl <file>` (output of `osmium tags-filter … -f opl`) and `--geojson <file>` (a point FeatureCollection) work too, without osmium.
 
 ## Change the region
 
-The region is a bounding box `south,west,north,east`. Change it in **both** places:
-
-- `.github/workflows/update-data.yml` → `env.REGION_BBOX` and `env.REGION_NAME`
-- `scripts/fetch-data.mjs` → the default for `REGION_BBOX` / `REGION_NAME` (used by local runs)
-
-Then run the workflow (or `npm run fetch`). The map fits itself to the data, so no frontend changes are needed. [bboxfinder.com](http://bboxfinder.com/) is handy for picking a box (note it shows `west,south,east,north`).
-
-Size guidance: this region is ~120 KB. A whole German state is a few MB; all of Germany is likely in the 10–20 MB range. The script warns (exit code 2) above 20 MB — at that point split by sub-region or narrow the box, as a single huge GeoJSON makes the page slow on phones.
+Set `PBF_URL` and `REGION_NAME` in `.github/workflows/deploy.yml` to any [Geofabrik extract](https://download.geofabrik.de/) (a country is much faster to build than Europe). The start view is `REGION_BOUNDS` in `app.js`.
 
 ## Attribution & licences
 
-- **Map data** © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), available under the [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/). `data/vending.geojson` is a derived database and is likewise ODbL; keep the attribution if you reuse it.
+- **Map data** © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), available under the [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/). The generated tiles are a derived database and are likewise ODbL; keep the attribution if you reuse it.
 - **Satellite imagery** © Esri, Maxar, Earthstar Geographics and the GIS User Community (Esri World Imagery, non-commercial use with attribution).
 - **Map tiles** from `tile.openstreetmap.org`, used under the [OSM Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/) (fine for a low-traffic hobby site; switch to another tile provider if traffic grows).
-- **Overpass API** public instances are shared community resources — the nightly job runs once a day with a descriptive User-Agent; please keep it that way.
-- Leaflet (BSD-2-Clause), Leaflet.markercluster (MIT), both redistributed unchanged in `vendor/`; osmtogeojson (MIT).
+- **Extracts** from [Geofabrik](https://download.geofabrik.de/), downloaded once a day. **Overpass API** is only asked for the few way/relation centres.
+- Leaflet (BSD-2-Clause), Leaflet.markercluster (MIT), both redistributed unchanged in `vendor/`.
 - Code in this repo: MIT.

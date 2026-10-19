@@ -1,8 +1,8 @@
-/* Vending machine map — static frontend. Data: data/vending.geojson (prebuilt). */
+/* Vending machine map — static frontend. Data: tiles/ (prebuilt, see scripts/build-tiles.mjs). */
 (function () {
   'use strict';
 
-  const DATA_URL = 'data/vending.geojson';
+  const INDEX_URL = 'tiles/index.json';
   const { t } = I18N;
   const fmt = (n) => I18N.fmtNum(n);
 
@@ -53,9 +53,9 @@
 
   // ---------- Map ----------
   const map = L.map('map', { zoomControl: false, worldCopyJump: true });
-  // Open at the shared link's view or the prebuilt region right away, so tiles start loading
+  // Open at the shared link's view or the start region right away, so map tiles start loading
   // while the data is still downloading (instead of first loading a zoom-6 view we then leave).
-  const REGION_BOUNDS = [[50.93, 8.95], [51.33, 9.60]]; // keep in sync with REGION_BBOX in scripts/fetch-data.mjs
+  const REGION_BOUNDS = [[50.93, 8.95], [51.33, 9.60]]; // Fritzlar and surroundings
   {
     const h = parseHash();
     if (h.zoom != null) map.setView([h.lat, h.lon], h.zoom);
@@ -188,6 +188,7 @@
 
   // ---------- State ----------
   let entries = []; // { marker, cats }
+  let overviewOn = false; // zoomed out: counts per area instead of markers (see showOverview)
   // Filter choice is remembered per browser. We store the *hidden* groups, so groups added
   // in a later version of the site show up by default.
   const FILTER_KEY = 'vm-filter-hidden';
@@ -213,6 +214,7 @@
   }
 
   function updateCountText(visibleCount) {
+    if (overviewOn) return; // the overview shows its own total
     const n = visibleCount != null ? visibleCount
       : entries.filter((e) => e.cats.some((c) => active.has(c))).length;
     $('count').textContent = n === entries.length
@@ -1184,84 +1186,48 @@
     if (e) showAdded([e]);
   }
 
-  // ---------- Live loading for areas outside the prebuilt region ----------
-  // The map is split into a grid of cells. When the view settles on cells we have no data for,
-  // one Overpass query fetches them (debounced, one request at a time, cached for the session).
-  const LIVE = {
-    enabled: false,        // live Overpass loading outside the prebuilt region (off: too slow in practice)
-    cell: 0.2,             // degrees (~22 km north-south); cache unit
-    block: 2,              // cells per side per request (0.4° ≈ 45 × 30 km) — small queries answer fast
-    minZoom: 10,           // below this the area is too large to query politely
-    maxCells: 80,          // safety cap per view
-    debounceMs: 400,
-    concurrency: 2,        // public Overpass allows ~2 parallel requests per client
-    timeoutS: 25,          // short server timeout = scheduled sooner by Overpass
-    cacheTtlMs: 12 * 3600 * 1000,
-    endpoints: ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'],
+  // ---------- Tiles: machines are loaded per grid cell as the map moves ----------
+  // tiles/index.json lists every cell that has machines as [level, i, j, count, hash] (see
+  // scripts/build-tiles.mjs). Zoomed out, the map shows how many machines each area has, straight
+  // from the index (one small download). Zoomed in, it fetches the cells on screen, nearest first,
+  // a few at a time; cells that scrolled away are cancelled. The hash in the URL changes only when
+  // a cell's content does, so cached cells stay valid across nightly data updates.
+  const TILES = {
+    base: 'tiles/',
+    minZoom: 10,        // below this: counts per area instead of single machines
+    concurrency: 3,
+    // Also load cells this fraction of the view beyond its edges (after the visible ones),
+    // except on data saver or a slow connection.
+    pad: conn.saveData || ['slow-2g', '2g', '3g'].includes(conn.effectiveType) ? 0 : 0.25,
+    timeoutMs: 30000,
+    debounceMs: 250,
+    bubblePx: 72,       // rough on-screen size of one counted area when zoomed out
   };
-  const loadedCells = new Set();
-  const pendingCells = new Set();
-  const inflight = new Map();   // blockKey -> { ctrl, bounds, cells }
-  let liveTimer = null;
-  let liveUsed = false;
-  let liveHooked = false;
-  let liveRun = 0;
+  let tileIndex = null;          // { cell, cells: [{ name, n, h, lat, lon, size, bounds }] }
+  const loadedTiles = new Set(); // cell names
+  const failedTiles = new Set();
+  const tileJobs = new Map();    // name -> { ctrl, cell, timedOut }
+  let tileQueue = [];
+  let tileWorkers = 0;
+  let tileTimer = null;
+  let tileIdle = [];             // resolvers waiting for all loads to finish
 
-  const cellKey = (i, j) => `${i}:${j}`;
-  function cellsIn(bounds) {
-    const out = [];
-    const i0 = Math.floor(bounds.getSouth() / LIVE.cell), i1 = Math.floor(bounds.getNorth() / LIVE.cell);
-    const j0 = Math.floor(bounds.getWest() / LIVE.cell), j1 = Math.floor(bounds.getEast() / LIVE.cell);
-    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) out.push([i, j]);
-    return out;
-  }
-  const cellOf = (lat, lon) => [Math.floor(lat / LIVE.cell), Math.floor(lon / LIVE.cell)];
-  const cellBounds = ([i, j]) => L.latLngBounds([i * LIVE.cell, j * LIVE.cell], [(i + 1) * LIVE.cell, (j + 1) * LIVE.cell]);
-
-  /** Marks grid cells that lie completely inside the prebuilt bbox as already loaded. */
-  function markPrebuilt(bbox) {
-    if (!Array.isArray(bbox) || bbox.length !== 4) return;
-    const [s, w, n, e] = bbox;
-    for (const [i, j] of cellsIn(L.latLngBounds([s, w], [n, e]))) {
-      const cs = i * LIVE.cell, cw = j * LIVE.cell;
-      if (cs >= s && cw >= w && cs + LIVE.cell <= n && cw + LIVE.cell <= e) loadedCells.add(cellKey(i, j));
-    }
+  function setTileIndex(ix) {
+    tileIndex = {
+      cell: ix.cell,
+      cells: ix.cells.map(([level, i, j, n, h]) => {
+        const size = ix.cell / 2 ** level;
+        return { name: `${level}_${i}_${j}`, n, h, size, lat: i * size, lon: j * size,
+          bounds: L.latLngBounds([i * size, j * size], [(i + 1) * size, (j + 1) * size]) };
+      }),
+    };
   }
 
-  // ---- per-cell cache in localStorage (instant revisits, also after reload) ----
-  const CACHE_PREFIX = 'vm-cell:';
-  if (!LIVE.enabled) {
-    // Feature is off: free the storage used by earlier versions.
-    try { Object.keys(localStorage).filter((k) => k.startsWith(CACHE_PREFIX)).forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
-  }
-  function cacheGet(key) {
-    try {
-      const raw = localStorage.getItem(CACHE_PREFIX + key);
-      if (!raw) return null;
-      const v = JSON.parse(raw);
-      if (!v || Date.now() - v.t > LIVE.cacheTtlMs) { localStorage.removeItem(CACHE_PREFIX + key); return null; }
-      return v.e;
-    } catch { return null; }
-  }
-  function cacheSet(key, elements) {
-    const val = JSON.stringify({ t: Date.now(), e: elements });
-    try { localStorage.setItem(CACHE_PREFIX + key, val); } catch {
-      // Storage full: drop all cached cells once and try again; give up silently otherwise.
-      try {
-        Object.keys(localStorage).filter((k) => k.startsWith(CACHE_PREFIX)).forEach((k) => localStorage.removeItem(k));
-        localStorage.setItem(CACHE_PREFIX + key, val);
-      } catch { /* no caching then */ }
-    }
-  }
-
-  /** Overpass element -> compact [id, lat, lon, props] (what we cache and add to the map). */
-  function compact(el) {
-    const lat = el.lat != null ? el.lat : el.center && el.center.lat;
-    const lon = el.lon != null ? el.lon : el.center && el.center.lon;
-    const props = { osm_type: el.type, osm_id: el.id };
-    const tags = el.tags || {};
-    for (const k of Object.keys(tags)) if (KEEP_KEYS.includes(k) || k.startsWith('payment:')) props[k] = tags[k];
-    return [`${el.type}/${el.id}`, lat, lon, props];
+  /** Tile row [id, lat, lon, tags] with id like "n123" -> what addMachine takes. */
+  const OSM_TYPES = { n: 'node', w: 'way', r: 'relation' };
+  function fromTile([sid, lat, lon, tags]) {
+    const type = OSM_TYPES[sid[0]], osmId = Number(sid.slice(1));
+    return [`${type}/${osmId}`, lat, lon, Object.assign({ osm_type: type, osm_id: osmId }, tags)];
   }
   function addCompact(list) {
     const added = [];
@@ -1279,141 +1245,116 @@
     el.textContent = text || '';
   }
 
-  function scheduleLive() {
-    if (!LIVE.enabled) return;
-    clearTimeout(liveTimer);
-    liveTimer = setTimeout(loadLive, LIVE.debounceMs);
+  function scheduleTiles() {
+    clearTimeout(tileTimer);
+    tileTimer = setTimeout(updateTiles, TILES.debounceMs);
   }
+  map.on('moveend', scheduleTiles);
+  window.addEventListener('online', scheduleTiles);
 
-  async function loadLive() {
-    const run = ++liveRun;
+  /** Loads what the current view needs; resolves once nothing is loading any more. */
+  function updateTiles() {
+    if (!tileIndex) return Promise.resolve();
+    const zoomedOut = map.getZoom() < TILES.minZoom;
+    showOverview(zoomedOut);
     const view = map.getBounds();
-
-    // Cancel requests for areas that are no longer on screen.
-    for (const [key, job] of inflight) {
-      if (!job.bounds.intersects(view)) {
-        job.ctrl.abort();
-        job.cells.forEach((c) => pendingCells.delete(c));
-        inflight.delete(key);
-      }
-    }
-
-    let missing = cellsIn(view).filter(([i, j]) => !loadedCells.has(cellKey(i, j)) && !pendingCells.has(cellKey(i, j)));
-    if (!missing.length) { if (!inflight.size) setLiveStatus(''); return; }
-    if (map.getZoom() < LIVE.minZoom || missing.length > LIVE.maxCells) {
-      setLiveStatus(t('live.zoomIn'), 'hint');
-      return;
-    }
-
-    // 1) Cached cells show up immediately.
-    const fromCache = [];
-    missing = missing.filter(([i, j]) => {
-      const cached = cacheGet(cellKey(i, j));
-      if (!cached) return true;
-      fromCache.push(...cached);
-      loadedCells.add(cellKey(i, j));
-      return false;
-    });
-    let addedTotal = 0;
-    if (fromCache.length) { const a = addCompact(fromCache); addedTotal += a.length; showAdded(a); markLive(); }
-    if (!missing.length) { finishStatus(addedTotal); return; }
-
-    // 2) Group the rest into small blocks, nearest to the map centre first.
-    const groups = new Map();
-    for (const [i, j] of missing) {
-      const key = `${Math.floor(i / LIVE.block)}:${Math.floor(j / LIVE.block)}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push([i, j]);
-    }
+    const area = view.pad(TILES.pad);
+    for (const job of tileJobs.values()) if (zoomedOut || !job.cell.bounds.intersects(area)) job.ctrl.abort();
     const center = map.getCenter();
-    const blocks = [...groups.entries()].map(([key, cells]) => {
-      const bounds = cells.reduce((b, c) => b.extend(cellBounds(c)), cellBounds(cells[0]));
-      return { key, cells, bounds, dist: center.distanceTo(bounds.getCenter()) };
-    }).sort((x, y) => x.dist - y.dist);
-    blocks.forEach((b) => b.cells.forEach(([i, j]) => pendingCells.add(cellKey(i, j))));
-
-    let done = 0, failed = 0;
-    const total = blocks.length;
-    const progress = () => { if (run === liveRun) setLiveStatus(`${t('live.loading')} (${done}/${total})`, 'busy'); };
-    progress();
-
-    const queue = blocks.slice();
-    async function worker() {
-      while (queue.length) {
-        const b = queue.shift();
-        if (!b.bounds.intersects(map.getBounds())) { b.cells.forEach(([i, j]) => pendingCells.delete(cellKey(i, j))); done++; continue; }
-        const ctrl = new AbortController();
-        inflight.set(b.key + '#' + run, { ctrl, bounds: b.bounds, cells: b.cells.map(([i, j]) => cellKey(i, j)) });
-        try {
-          const json = await overpass(blockQuery(b.bounds), ctrl.signal);
-          // Split the answer per cell for the cache, then add to the map right away.
-          const perCell = new Map(b.cells.map(([i, j]) => [cellKey(i, j), []]));
-          for (const el of json.elements || []) {
-            const c = compact(el);
-            if (!Number.isFinite(c[1]) || !Number.isFinite(c[2])) continue;
-            const k = cellKey(...cellOf(c[1], c[2]));
-            if (perCell.has(k)) perCell.get(k).push(c);
-          }
-          for (const [k, list] of perCell) { cacheSet(k, list); loadedCells.add(k); }
-          const added = addCompact([...perCell.values()].flat());
-          addedTotal += added.length;
-          showAdded(added);
-          markLive();
-        } catch (err) {
-          if (err.name !== 'AbortError') { failed++; console.warn('Live block failed', err); }
-        } finally {
-          b.cells.forEach(([i, j]) => pendingCells.delete(cellKey(i, j)));
-          inflight.delete(b.key + '#' + run);
-          done++;
-          progress();
-        }
-      }
-    }
-    await Promise.all(Array.from({ length: Math.min(LIVE.concurrency, blocks.length) }, worker));
-    if (run !== liveRun && inflight.size) return; // a newer run is still busy; let it report
-    if (failed) setLiveStatus(t('live.busy'), 'warn');
-    else finishStatus(addedTotal);
+    tileQueue = zoomedOut ? [] : tileIndex.cells
+      .filter((c) => !loadedTiles.has(c.name) && !tileJobs.has(c.name) && c.bounds.intersects(area))
+      .map((c) => ({ c, d: (c.bounds.intersects(view) ? 0 : 1e8) + center.distanceTo(c.bounds.getCenter()) }))
+      .sort((a, b) => a.d - b.d)
+      .map((x) => x.c);
+    if (tileQueue.length) failedTiles.clear();
+    while (tileWorkers < TILES.concurrency && tileQueue.length) tileWorker();
+    renderTileStatus();
+    return tileWorkers ? new Promise((resolve) => tileIdle.push(resolve)) : Promise.resolve();
   }
 
-  function blockQuery(bounds) {
-    const bb = [bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast()].map((n) => n.toFixed(4)).join(',');
-    return `[out:json][timeout:${LIVE.timeoutS}][bbox:${bb}];nwr["amenity"="vending_machine"];out center qt;`;
-  }
-
-  function markLive() { if (!liveUsed) { liveUsed = true; renderStamp(); } }
-
-  function finishStatus(n) {
-    setLiveStatus(n ? (n === 1 ? t('live.loaded1') : t('live.loadedN', { n: fmt(n) })) : t('live.none'), 'ok');
-    setTimeout(() => { if ($('live-status').classList.contains('ok')) setLiveStatus(''); }, 2500);
-  }
-
-  async function overpass(query, signal) {
-    let lastErr;
-    for (const url of LIVE.endpoints) {
-      const ctrl = new AbortController();
-      const onAbort = () => ctrl.abort();
-      if (signal) { if (signal.aborted) ctrl.abort(); else signal.addEventListener('abort', onAbort); }
-      const timer = setTimeout(() => ctrl.abort(), (LIVE.timeoutS + 20) * 1000);
+  async function tileWorker() {
+    tileWorkers++;
+    while (tileQueue.length) {
+      const cell = tileQueue.shift();
+      if (loadedTiles.has(cell.name) || tileJobs.has(cell.name)) continue;
+      const job = { ctrl: new AbortController(), cell, timedOut: false };
+      tileJobs.set(cell.name, job);
+      renderTileStatus();
+      const timer = setTimeout(() => { job.timedOut = true; job.ctrl.abort(); }, TILES.timeoutMs);
       try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'data=' + encodeURIComponent(query),
-          signal: ctrl.signal,
-        });
+        const res = await fetch(`${TILES.base}c/${cell.name}.json?h=${cell.h}`, { signal: job.ctrl.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        if (json.remark && /error|timed out|runtime/i.test(json.remark)) throw new Error(json.remark);
-        return json;
+        const rows = await res.json();
+        loadedTiles.add(cell.name);
+        failedTiles.delete(cell.name);
+        showAdded(addCompact(rows.map(fromTile)));
       } catch (err) {
-        if (signal && signal.aborted) { const e = new Error('aborted'); e.name = 'AbortError'; throw e; }
-        lastErr = err;
+        if (err.name !== 'AbortError' || job.timedOut) { failedTiles.add(cell.name); console.warn('Tile failed', cell.name, err); }
       } finally {
         clearTimeout(timer);
-        if (signal) signal.removeEventListener('abort', onAbort);
+        tileJobs.delete(cell.name);
+        renderTileStatus();
       }
     }
-    throw lastErr;
+    if (--tileWorkers === 0) { tileIdle.forEach((resolve) => resolve()); tileIdle = []; }
+  }
+
+  function renderTileStatus() {
+    const busy = tileJobs.size + tileQueue.length;
+    if (busy) setLiveStatus(t('live.loading'), 'busy');
+    else if (failedTiles.size) setLiveStatus(t('live.busy'), 'warn');
+    else setLiveStatus('');
+  }
+
+  // ---- overview: machine counts per area when zoomed out ----
+  const overview = L.layerGroup();
+  const compactNum = (n) => {
+    try { return new Intl.NumberFormat(I18N.lang, { notation: 'compact', maximumFractionDigits: 1 }).format(n); } catch { return String(n); }
+  };
+  function showOverview(on) {
+    overviewOn = on;
+    if (on) {
+      if (map.hasLayer(cluster)) map.removeLayer(cluster);
+      if (!map.hasLayer(overview)) map.addLayer(overview);
+      renderOverview();
+    } else if (map.hasLayer(overview)) {
+      map.removeLayer(overview);
+      map.addLayer(cluster);
+      updateCountText();
+    }
+  }
+  function renderOverview() {
+    overview.clearLayers();
+    // Group cells into blocks of 2^k level-0 cells so each block is about bubblePx wide on screen.
+    const cellPx = tileIndex.cell / 360 * 256 * 2 ** map.getZoom();
+    const block = tileIndex.cell * 2 ** Math.max(0, Math.ceil(Math.log2(TILES.bubblePx / cellPx)));
+    const groups = new Map();
+    for (const c of tileIndex.cells) {
+      const key = `${Math.floor(c.lat / block)}_${Math.floor(c.lon / block)}`;
+      let g = groups.get(key);
+      if (!g) groups.set(key, g = { n: 0, lat: 0, lon: 0, bounds: L.latLngBounds(c.bounds.getSouthWest(), c.bounds.getNorthEast()) });
+      g.n += c.n;
+      g.lat += c.n * (c.lat + c.size / 2);
+      g.lon += c.n * (c.lon + c.size / 2);
+      g.bounds.extend(c.bounds);
+    }
+    const view = map.getBounds();
+    const area = view.pad(0.2);
+    let inView = 0;
+    for (const g of groups.values()) {
+      const pos = L.latLng(g.lat / g.n, g.lon / g.n);
+      if (view.contains(pos)) inView += g.n;
+      if (!area.contains(pos)) continue;
+      const cls = g.n < 100 ? 'small' : g.n < 1000 ? 'medium' : 'large';
+      const m = L.marker(pos, {
+        icon: L.divIcon({ className: `marker-cluster marker-cluster-${cls}`, html: `<div><span>${compactNum(g.n)}</span></div>`, iconSize: [40, 40] }),
+        title: t('count.all', { n: fmt(g.n) }),
+      });
+      m.on('click', () => map.fitBounds(g.bounds));
+      overview.addLayer(m);
+    }
+    // Counts from the index ignore the category filter (they are totals per area).
+    $('count').textContent = t('count.all', { n: fmt(inView) });
   }
 
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && addMode) setAddMode(false); });
@@ -1562,7 +1503,7 @@
   function renderStamp() {
     if (!dataMeta) return;
     $('stamp').textContent = t('stamp.asOf', { date: formatStamp(dataMeta.timestamp_osm_base) }) +
-      (dataOffline ? ` · ${t('stamp.offline')}` : '') + (liveUsed ? ` · ${t('stamp.live')}` : '');
+      (dataOffline ? ` · ${t('stamp.offline')}` : '');
     $('stamp').title = dataMeta.region ? t('stamp.region', { region: dataMeta.region }) : '';
   }
 
@@ -1587,40 +1528,23 @@
     try {
       let res;
       try {
-        res = await fetch(DATA_URL, { cache: 'no-cache', signal: ctrl.signal });
+        res = await fetch(INDEX_URL, { cache: 'no-cache', signal: ctrl.signal });
       } catch (e) {
         throw new Error(ctrl.signal.aborted ? t('err.timeout') : !navigator.onLine ? t('err.offline') : e.message);
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status} while loading ${DATA_URL}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status} while loading ${INDEX_URL}`);
       dataOffline = res.headers.get('X-VM-Offline') === '1';
-      const gj = await res.json();
-      if (!gj || !Array.isArray(gj.features)) throw new Error('Data file is not valid GeoJSON.');
-
-      const added = [];
-      for (const f of gj.features) {
-        if (!f.geometry || f.geometry.type !== 'Point') continue;
-        const [lon, lat] = f.geometry.coordinates;
-        const props = f.properties || {};
-        const id = f.id || `${props.osm_type}/${props.osm_id}`;
-        const entry = addMachine(id, lat, lon, props);
-        if (entry) added.push(entry);
-      }
-      buildFilters(counts);
-      applyFilter();
-
-      const meta = gj.metadata || {};
-      dataMeta = meta;
+      const ix = await res.json();
+      if (!ix || !Array.isArray(ix.cells)) throw new Error('Tile index is not valid.');
+      setTileIndex(ix);
+      dataMeta = ix;
       renderStamp();
-      markPrebuilt(meta.bbox);
-
-      const fromLink = applyHash();
-      if (fromLink) {
-        // view came from a shared link
-      } else if (Array.isArray(meta.bbox) && meta.bbox.length === 4 && String(meta.bbox) !== String(REGION_BOUNDS.flat())) {
-        // the data covers another region than the one the map opened at (REGION_BOUNDS out of sync)
-        const [s, w, n, e] = meta.bbox;
-        map.fitBounds([[s, w], [n, e]], { animate: false });
-      }
+      buildFilters(counts);
+      updateCountText();
+      $('loading').hidden = true; // from here on the status pill shows progress per area
+      // Load the cells on screen before opening a shared machine, so it is found among them.
+      await updateTiles();
+      applyHash();
     } catch (err) {
       console.error(err);
       loadFailed = true;
@@ -1631,12 +1555,6 @@
       $('loading').hidden = true;
     }
     resumeAfterLogin();
-    // Live loading starts with the first map move (not on page load), to spare Overpass.
-    if (!liveHooked) {
-      liveHooked = true;
-      map.on('moveend', scheduleLive);
-      if (location.hash) scheduleLive(); // opened via a link: load the area it points to
-    }
     hashReady = true;
     updateHash();
   }

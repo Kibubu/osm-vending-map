@@ -1,0 +1,92 @@
+name: Build data and deploy
+
+# Nightly: filter all vending machines out of Geofabrik's Europe extract, cut them into tiles
+# (scripts/build-tiles.mjs), keep the tiles on the `tiles` branch (one commit, force-pushed, so the
+# repository doesn't grow) and deploy the site with them to GitHub Pages.
+# On every push to main: deploy the site with the tiles from the last nightly run.
+#
+# Needs Settings → Pages → Build and deployment → Source: "GitHub Actions".
+
+on:
+  schedule:
+    - cron: '17 3 * * *'   # 03:17 UTC, after Geofabrik's nightly Europe extract is out
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      rebuild:
+        description: 'Rebuild the tiles from OSM (otherwise only deploy)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  # Any Geofabrik extract works, e.g. .../europe/germany-latest.osm.pbf for a quicker test.
+  PBF_URL: https://download.geofabrik.de/europe-latest.osm.pbf
+  REGION_NAME: Europe
+
+jobs:
+  tiles:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.rebuild)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      USER_AGENT: 'osm-vending-map/1.0 (GitHub Action; +https://github.com/${{ github.repository }})'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - run: sudo apt-get update -q && sudo apt-get install -y -q osmium-tool
+
+      - name: Build tiles (streams the ~35 GB extract, nothing large is stored)
+        run: node scripts/build-tiles.mjs --pbf "$PBF_URL" --region "$REGION_NAME" --out tiles
+
+      - name: Push to the tiles branch
+        run: |
+          cd tiles
+          git init -q -b tiles
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "tiles: $(jq -r '.count' index.json) machines, OSM data of $(jq -r '.timestamp_osm_base' index.json)"
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" tiles
+
+  deploy:
+    needs: tiles
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/checkout@v5
+        with:
+          ref: tiles
+          path: tiles
+
+      - name: Assemble the site
+        run: |
+          rm -rf tiles/.git
+          mkdir _site
+          cp -r index.html land.html app.js i18n.js osm.js style.css sw.js vendor tiles _site/
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
