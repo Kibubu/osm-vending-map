@@ -11,7 +11,7 @@
  *
  * Bump VERSION together with the ?v= query strings in index.html on every deploy.
  */
-const VERSION = '18';
+const VERSION = '19';
 const SHELL_CACHE = `vm-shell-v${VERSION}`;
 const DATA_CACHE = 'vm-data';
 const TILE_CACHE = 'vm-tiles';
@@ -30,7 +30,7 @@ const SHELL_FILES = [
   'vendor/markercluster/leaflet.markercluster.js',
 ];
 const DATA_PATH = 'data/vending.geojson';
-const TILE_HOSTS = new Set(['tile.openstreetmap.org', 'server.arcgisonline.com', 'services.arcgisonline.com']);
+const TILE_HOSTS = new Set(['tile.openstreetmap.org', 'server.arcgisonline.com', 'services.arcgisonline.com', 'clarity.maptiles.arcgis.com']);
 
 const NAV_TIMEOUT_MS = 4000;
 const DATA_TIMEOUT_MS = 6000;
