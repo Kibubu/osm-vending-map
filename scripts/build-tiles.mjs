@@ -11,6 +11,9 @@
 // cell's content changes, so after a nightly rebuild browsers re-download just those cells.
 //
 // Input (one of):
+//   --postpass <s,w,n,e> query the Postpass API (SQL over a minutely updated OSM database,
+//                       postpass.geofabrik.de) for the machines in this box. Small download
+//                       (~100 KB for a district, ~80 MB for all of Europe); the default choice
 //   --pbf <url|file>    an OSM PBF extract (e.g. Geofabrik), streamed through osmium-tool,
 //                       so even Europe (~35 GB) needs no disk space for the extract itself
 //   --opl <file>        output of `osmium tags-filter ... -f opl` (already filtered)
@@ -42,10 +45,11 @@ const OVERPASS = (process.env.OVERPASS_URLS ||
   'https://overpass-api.de/api/interpreter,https://overpass.private.coffee/api/interpreter')
   .split(',').map((s) => s.trim()).filter(Boolean);
 const USER_AGENT = process.env.USER_AGENT || 'osm-vending-map/1.0 (tile builder)';
+const POSTPASS = process.env.POSTPASS_URL || 'https://postpass.geofabrik.de/api/interpreter';
 
 const { values: args } = parseArgs({
   options: {
-    pbf: { type: 'string' }, opl: { type: 'string' }, geojson: { type: 'string' },
+    postpass: { type: 'string' }, pbf: { type: 'string' }, opl: { type: 'string' }, geojson: { type: 'string' },
     out: { type: 'string', default: 'tiles' }, region: { type: 'string', default: '' },
     timestamp: { type: 'string', default: '' }, bbox: { type: 'string', default: '' },
   },
@@ -76,6 +80,54 @@ async function filterPbf(src) {
   const opl = await run('osmium', ['cat', filtered, '-f', 'opl']);
   await rm(dir, { recursive: true, force: true });
   return [opl, stamp];
+}
+
+function parseBbox(str, flag) {
+  const b = str.split(',').map(Number);
+  if (b.length !== 4 || b.some((n) => !Number.isFinite(n)) || b[0] >= b[2] || b[1] >= b[3]) {
+    throw new Error(`${flag} must be "south,west,north,east", got "${str}"`);
+  }
+  return b;
+}
+
+/** Asks Postpass for all vending machines in the box; ways/relations come as their centre. */
+async function queryPostpass(bboxStr) {
+  const [s, w, n, e] = parseBbox(bboxStr, '--postpass');
+  const env = `ST_MakeEnvelope(${w},${s},${e},${n},4326)`;
+  const where = `tags->>'amenity'='vending_machine' AND geom && ${env}`;
+  const sql = [
+    `SELECT osm_type, osm_id, tags, geom FROM postpass_point WHERE ${where}`,
+    `SELECT osm_type, osm_id, tags, ST_Centroid(geom) AS geom FROM postpass_polygon WHERE ${where}`,
+    `SELECT osm_type, osm_id, tags, ST_Centroid(geom) AS geom FROM postpass_line WHERE ${where}`,
+  ].join(' UNION ALL ');
+  console.log(`→ Querying Postpass for ${bboxStr}`);
+  const t0 = Date.now();
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(POSTPASS, {
+        method: 'POST',
+        headers: { 'User-Agent': USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(sql),
+        signal: AbortSignal.timeout(15 * 60 * 1000),
+      });
+      const text = await res.text();
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`);
+      const gj = JSON.parse(text);
+      console.log(`  ${gj.features.length} features in ${Math.round((Date.now() - t0) / 1000)} s`);
+      const machines = gj.features.filter((f) => f.geometry?.type === 'Point').map((f) => {
+        const p = f.properties;
+        const [lon, lat] = f.geometry.coordinates;
+        return { id: p.osm_type.toLowerCase() + p.osm_id, lat, lon, tags: p.tags || {} };
+      });
+      return [machines, gj.postpass_properties?.timestamp || ''];
+    } catch (err) {
+      lastErr = err;
+      console.warn(`  ✗ attempt ${attempt}: ${err.message}`);
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 30000 * attempt));
+    }
+  }
+  throw lastErr;
 }
 
 /** OPL escapes everything outside a safe set as %<hex code point>%. */
@@ -161,7 +213,10 @@ async function resolveCentres(machines) {
 
 async function main() {
   let machines, stamp = args.timestamp;
-  if (args.pbf) {
+  if (args.postpass) {
+    [machines, stamp] = await queryPostpass(args.postpass);
+    stamp = args.timestamp || stamp;
+  } else if (args.pbf) {
     let opl;
     [opl, stamp] = await filterPbf(args.pbf);
     machines = parseOpl(opl);
@@ -173,13 +228,10 @@ async function main() {
     machines = parseGeojson(gj);
     stamp = stamp || gj.metadata?.timestamp_osm_base || '';
   } else {
-    throw new Error('Give one of --pbf, --opl or --geojson.');
+    throw new Error('Give one of --postpass, --pbf, --opl or --geojson.');
   }
   if (args.bbox) {
-    const b = args.bbox.split(',').map(Number);
-    if (b.length !== 4 || b.some((n) => !Number.isFinite(n)) || b[0] >= b[2] || b[1] >= b[3]) {
-      throw new Error(`--bbox must be "south,west,north,east", got "${args.bbox}"`);
-    }
+    const b = parseBbox(args.bbox, '--bbox');
     // Ways/relations have no position yet; keep them until their centre is known.
     const inside = (m) => m.lat == null || (m.lat >= b[0] && m.lat <= b[2] && m.lon >= b[1] && m.lon <= b[3]);
     machines = machines.filter(inside);

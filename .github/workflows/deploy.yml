@@ -1,6 +1,6 @@
 name: Build data and deploy
 
-# Nightly: filter the vending machines of the region out of a Geofabrik extract, cut them into tiles
+# Nightly: query the region's vending machines from Postpass (SQL over OSM), cut them into tiles
 # (scripts/build-tiles.mjs), keep the tiles on the `tiles` branch (one commit, force-pushed, so the
 # repository doesn't grow) and deploy the site with them to GitHub Pages.
 # On every push to main: deploy the site with the tiles from the last nightly run.
@@ -29,10 +29,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # The smallest Geofabrik extract that contains the region (Hessen, ~350 MB), cropped to
-  # REGION_BBOX (south,west,north,east; empty = keep the whole extract). Downloaded once a night,
-  # so keep the extract small: all of Europe is ~35 GB.
-  PBF_URL: https://download.geofabrik.de/europe/germany/hessen-latest.osm.pbf
+  # south,west,north,east. Postpass answers with just the vending machines: ~130 KB for this
+  # region, ~80 MB for all of Europe (-25,34,45,72).
   REGION_BBOX: '50.93,8.95,51.33,9.60'
   REGION_NAME: Fritzlar and surroundings
 
@@ -40,7 +38,7 @@ jobs:
   tiles:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.rebuild)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       USER_AGENT: 'osm-vending-map/1.0 (GitHub Action; +https://github.com/${{ github.repository }})'
     steps:
@@ -50,10 +48,8 @@ jobs:
         with:
           node-version: 22
 
-      - run: sudo apt-get update -q && sudo apt-get install -y -q osmium-tool
-
       - name: Build tiles
-        run: node scripts/build-tiles.mjs --pbf "$PBF_URL" --bbox "$REGION_BBOX" --region "$REGION_NAME" --out tiles
+        run: node scripts/build-tiles.mjs --postpass "$REGION_BBOX" --region "$REGION_NAME" --out tiles
 
       - name: Push to the tiles branch
         run: |
