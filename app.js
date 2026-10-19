@@ -392,6 +392,42 @@
   });
   map.addControl(new BasemapControl());
 
+  // ---------- Faster zooming (opt-in) ----------
+  // When on, tile layers skip fetching intermediate zoom levels during zoom animations
+  // (Leaflet's updateWhenZooming, read on every view change, so toggling the option is enough).
+  const ZOOMTILES_KEY = 'vm-zoomtiles';
+  let fastZoom = false;
+  try { fastZoom = localStorage.getItem(ZOOMTILES_KEY) === 'fast'; } catch { /* ignore */ }
+  const tileLayers = () => [BASEMAPS.map, ...BASEMAPS.satellite.getLayers()];
+  const applyFastZoom = () => tileLayers().forEach((l) => { l.options.updateWhenZooming = !fastZoom; });
+  applyFastZoom();
+  const FastZoomControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd() {
+      const wrap = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+      const btn = L.DomUtil.create('button', 'locate-btn fastzoom-btn', wrap);
+      btn.type = 'button';
+      btn.textContent = '⚡';
+      const render = () => {
+        btn.title = t(fastZoom ? 'ctl.fastZoomOn' : 'ctl.fastZoomOff');
+        btn.setAttribute('aria-label', btn.title);
+        btn.setAttribute('aria-pressed', String(fastZoom));
+        btn.classList.toggle('active', fastZoom);
+      };
+      btn.addEventListener('click', () => {
+        fastZoom = !fastZoom;
+        applyFastZoom();
+        try { localStorage.setItem(ZOOMTILES_KEY, fastZoom ? 'fast' : 'all'); } catch { /* ignore */ }
+        render();
+      });
+      I18N.onChange(render);
+      render();
+      L.DomEvent.disableClickPropagation(wrap);
+      return wrap;
+    },
+  });
+  map.addControl(new FastZoomControl());
+
   // ---------- Outbox button + panel ----------
   let renderOutbox = null;
   const OutboxControl = L.Control.extend({

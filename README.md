@@ -12,6 +12,8 @@ Features: marker clustering, filter panel with 9 groups covering the `vending=*`
 
 The 🛰️ button (left control column) switches to satellite imagery with road and place labels on top. 🗺️ switches back, and the choice is remembered per browser. Imagery: [Esri World Imagery](https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9) (© Esri, Maxar, Earthstar Geographics), free for non-commercial use with attribution, which is shown automatically. If the site ever becomes commercial or high-traffic, check Esri's terms or switch to another imagery provider in `app.js` → `BASEMAPS`.
 
+The ⚡ button below it turns on *faster zooming*: base-map tiles are no longer fetched for the intermediate zoom levels of a zoom animation (Leaflet `updateWhenZooming: false` on every tile layer), which saves requests and data, especially in satellite view. Off by default; the choice is remembered per browser (`localStorage` key `vm-zoomtiles`).
+
 ## Languages
 
 The interface is available in 🇬🇧 English, 🇩🇪 Deutsch, 🇫🇷 Français, 🇪🇸 Español, 🇮🇹 Italiano and 🇳🇱 Nederlands.
