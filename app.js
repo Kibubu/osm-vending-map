@@ -52,11 +52,23 @@
   const $ = (id) => document.getElementById(id);
 
   // ---------- Map ----------
-  const map = L.map('map', { zoomControl: false, worldCopyJump: true }).setView([51.16, 10.45], 6);
+  const map = L.map('map', { zoomControl: false, worldCopyJump: true });
+  // Open at the shared link's view or the prebuilt region right away, so tiles start loading
+  // while the data is still downloading (instead of first loading a zoom-6 view we then leave).
+  const REGION_BOUNDS = [[50.93, 8.95], [51.33, 9.60]]; // keep in sync with REGION_BBOX in scripts/fetch-data.mjs
+  {
+    const h = parseHash();
+    if (h.zoom != null) map.setView([h.lat, h.lon], h.zoom);
+    else if (map.getSize().x && map.getSize().y) map.fitBounds(REGION_BOUNDS);
+    else map.setView(L.latLngBounds(REGION_BOUNDS).getCenter(), 10); // no size yet (e.g. hidden frame): fitBounds would give zoom 0
+  }
   let zoomCtl = L.control.zoom({ zoomInTitle: t('ctl.zoomIn'), zoomOutTitle: t('ctl.zoomOut') }).addTo(map);
   // Base maps: OSM (default) and satellite imagery (Esri World Imagery + labels on top).
   const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+  // Esri's tile hosts speak HTTP/1.1 only (max. 6 parallel requests per host), so the imagery and
+  // the two label layers are spread over two hosts that serve the same tiles.
   const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
+  const ESRI2 = 'https://services.arcgisonline.com/ArcGIS/rest/services';
   const BASEMAPS = {
     map: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: OSM_ATTR }),
     satellite: L.layerGroup([
@@ -64,8 +76,8 @@
         maxZoom: 19, maxNativeZoom: 18,
         attribution: 'Imagery &copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics, and the GIS User Community',
       }),
-      L.tileLayer(`${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 18, opacity: 0.8 }),
-      L.tileLayer(`${ESRI}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 18 }),
+      L.tileLayer(`${ESRI2}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 18, opacity: 0.8 }),
+      L.tileLayer(`${ESRI2}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 18 }),
     ]),
   };
   const BASEMAP_KEY = 'vm-basemap';
@@ -1538,9 +1550,8 @@
       const fromLink = applyHash();
       if (fromLink) {
         // view came from a shared link
-      } else if (entries.length) {
-        map.fitBounds(L.latLngBounds(entries.map((e) => e.marker.getLatLng())), { padding: [30, 30], maxZoom: 16, animate: false });
-      } else if (Array.isArray(meta.bbox) && meta.bbox.length === 4) {
+      } else if (Array.isArray(meta.bbox) && meta.bbox.length === 4 && String(meta.bbox) !== String(REGION_BOUNDS.flat())) {
+        // the data covers another region than the one the map opened at (REGION_BOUNDS out of sync)
         const [s, w, n, e] = meta.bbox;
         map.fitBounds([[s, w], [n, e]], { animate: false });
       }
