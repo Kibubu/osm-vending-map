@@ -69,15 +69,17 @@
   // the two label layers are spread over two hosts that serve the same tiles.
   const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
   const ESRI2 = 'https://services.arcgisonline.com/ArcGIS/rest/services';
+  // crossOrigin: tiles are fetched with CORS so the service worker can keep them for offline use
+  // (no-CORS responses can't be inspected and count several MB each against the storage quota).
   const BASEMAPS = {
-    map: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: OSM_ATTR }),
+    map: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true, attribution: OSM_ATTR }),
     satellite: L.layerGroup([
       L.tileLayer(`${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`, {
-        maxZoom: 19, maxNativeZoom: 18,
+        maxZoom: 19, maxNativeZoom: 18, crossOrigin: true,
         attribution: 'Imagery &copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics, and the GIS User Community',
       }),
-      L.tileLayer(`${ESRI2}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 18, opacity: 0.8 }),
-      L.tileLayer(`${ESRI2}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 18 }),
+      L.tileLayer(`${ESRI2}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 18, crossOrigin: true, opacity: 0.8 }),
+      L.tileLayer(`${ESRI2}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 18, crossOrigin: true }),
     ]),
   };
   const BASEMAP_KEY = 'vm-basemap';
@@ -392,12 +394,18 @@
   });
   map.addControl(new BasemapControl());
 
-  // ---------- Faster zooming (opt-in) ----------
+  // ---------- Faster zooming ----------
   // When on, tile layers skip fetching intermediate zoom levels during zoom animations
   // (Leaflet's updateWhenZooming, read on every view change, so toggling the option is enough).
+  // Off by default, but on by default when the browser reports data saver or a slow connection
+  // (Network Information API, Chromium only). An explicit choice always wins.
   const ZOOMTILES_KEY = 'vm-zoomtiles';
-  let fastZoom = false;
-  try { fastZoom = localStorage.getItem(ZOOMTILES_KEY) === 'fast'; } catch { /* ignore */ }
+  const conn = navigator.connection || {};
+  let fastZoom = Boolean(conn.saveData) || ['slow-2g', '2g', '3g'].includes(conn.effectiveType);
+  try {
+    const saved = localStorage.getItem(ZOOMTILES_KEY);
+    if (saved) fastZoom = saved === 'fast';
+  } catch { /* ignore */ }
   const tileLayers = () => [BASEMAPS.map, ...BASEMAPS.satellite.getLayers()];
   const applyFastZoom = () => tileLayers().forEach((l) => { l.options.updateWhenZooming = !fastZoom; });
   applyFastZoom();
@@ -1550,19 +1558,41 @@
   }
 
   let dataMeta = null;
+  let dataOffline = false; // the service worker answered with its cached copy (no or too slow network)
   function renderStamp() {
     if (!dataMeta) return;
-    $('stamp').textContent = t('stamp.asOf', { date: formatStamp(dataMeta.timestamp_osm_base) }) + (liveUsed ? ` · ${t('stamp.live')}` : '');
+    $('stamp').textContent = t('stamp.asOf', { date: formatStamp(dataMeta.timestamp_osm_base) }) +
+      (dataOffline ? ` · ${t('stamp.offline')}` : '') + (liveUsed ? ` · ${t('stamp.live')}` : '');
     $('stamp').title = dataMeta.region ? t('stamp.region', { region: dataMeta.region }) : '';
   }
 
   // ---------- Load data ----------
+  // With the service worker, a slow network falls back to the cached copy after a few seconds.
+  // Without it (first visit, old browser) we wait up to LOAD_TIMEOUT_MS, then offer a retry,
+  // which also happens by itself once the browser reports it is back online.
+  const LOAD_TIMEOUT_MS = 45000;
+  const SLOW_HINT_MS = 8000;
+  let loadFailed = false;
+  window.addEventListener('online', () => { if (loadFailed) load(); });
+
   async function load() {
     $('loading').hidden = false;
     $('error').hidden = true;
+    loadFailed = false;
+    const loadingText = $('loading').querySelector('span');
+    loadingText.textContent = t('loading');
+    const slowTimer = setTimeout(() => { loadingText.textContent = t('loading.slow'); }, SLOW_HINT_MS);
+    const ctrl = new AbortController();
+    const abortTimer = setTimeout(() => ctrl.abort(), LOAD_TIMEOUT_MS);
     try {
-      const res = await fetch(DATA_URL, { cache: 'no-cache' });
+      let res;
+      try {
+        res = await fetch(DATA_URL, { cache: 'no-cache', signal: ctrl.signal });
+      } catch (e) {
+        throw new Error(ctrl.signal.aborted ? t('err.timeout') : !navigator.onLine ? t('err.offline') : e.message);
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status} while loading ${DATA_URL}`);
+      dataOffline = res.headers.get('X-VM-Offline') === '1';
       const gj = await res.json();
       if (!gj || !Array.isArray(gj.features)) throw new Error('Data file is not valid GeoJSON.');
 
@@ -1593,8 +1623,11 @@
       }
     } catch (err) {
       console.error(err);
-      showError(t('err.load', { msg: err.message }), true);
+      loadFailed = true;
+      showError(t('err.load', { msg: err.name === 'AbortError' ? t('err.timeout') : err.message }), true);
     } finally {
+      clearTimeout(slowTimer);
+      clearTimeout(abortTimer);
       $('loading').hidden = true;
     }
     resumeAfterLogin();
@@ -1609,4 +1642,18 @@
   }
 
   load();
+
+  // ---------- Offline support ----------
+  // sw.js caches the app, the data and every map tile seen, so the map opens without signal.
+  // Off on a local dev server (it would serve stale files while editing) unless ?sw=1 is given.
+  if ('serviceWorker' in navigator) {
+    const dev = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+    if (!dev || new URLSearchParams(location.search).has('sw')) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch((e) => console.warn('[sw] registration failed', e));
+      });
+    } else {
+      navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister()));
+    }
+  }
 })();

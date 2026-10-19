@@ -7,19 +7,15 @@
   <meta name="description" content="Vending machines from OpenStreetMap on a map.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥤</text></svg>">
 
-  <!-- Open connections to the library CDN and the tile servers before they're needed. -->
-  <link rel="preconnect" href="https://unpkg.com" crossorigin>
-  <link rel="preconnect" href="https://tile.openstreetmap.org">
-  <link rel="preconnect" href="https://server.arcgisonline.com">
-  <link rel="preconnect" href="https://services.arcgisonline.com">
+  <!-- Open connections to the tile servers before they're needed (tiles load with CORS, see app.js). -->
+  <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin>
+  <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin>
+  <link rel="preconnect" href="https://services.arcgisonline.com" crossorigin>
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
-        integrity="sha256-YU3qCpj/P06tdPBJGPax0bm6Q1wltfwjsho5TR4+TYc=" crossorigin="">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
-        integrity="sha256-YSWCMtmNZNwqex4CEw1nQhvFub2lmU7vcCKP+XVwwXA=" crossorigin="">
-  <link rel="stylesheet" href="style.css?v=17">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="vendor/markercluster/MarkerCluster.css">
+  <link rel="stylesheet" href="vendor/markercluster/MarkerCluster.Default.css">
+  <link rel="stylesheet" href="style.css?v=18">
 </head>
 <body>
   <div id="map" role="application" aria-label="Map of vending machines"></div>
@@ -58,12 +54,11 @@
     <span id="stamp">data: –</span>
   </footer>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"
-          integrity="sha256-Hk4dIpcqOSb0hZjgyvFOP+cEmDXUKKNE/tT542ZbNQg=" crossorigin=""></script>
-  <script src="i18n.js?v=17"></script>
-  <script src="osm.js?v=17"></script>
-  <script src="app.js?v=17"></script>
+  <!-- Leaflet 1.9.4 and Leaflet.markercluster 1.5.3, self-hosted (one origin fewer to reach on a weak signal). -->
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/markercluster/leaflet.markercluster.js"></script>
+  <script src="i18n.js?v=18"></script>
+  <script src="osm.js?v=18"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>
