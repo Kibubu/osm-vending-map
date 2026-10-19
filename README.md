@@ -23,6 +23,8 @@ The 🛰️ button (left control column) switches to satellite imagery with road
 
 The ⚡ button below it turns on *faster zooming*: base-map tiles are no longer fetched for the intermediate zoom levels of a zoom animation (Leaflet `updateWhenZooming: false` on every tile layer), which saves requests and data, especially in satellite view. Off by default, but switched on automatically when the browser reports data saver or a slow (2G/3G) connection (Chromium only). An explicit choice wins and is remembered per browser (`localStorage` key `vm-zoomtiles`).
 
+Mouse-wheel and trackpad zoom glide continuously (`SmoothWheelZoom` in `app.js`): every wheel event moves a target zoom and each animation frame moves the map part of the way there, keeping the point under the cursor in place. Tile fade-in is off, so new tiles appear at once.
+
 ## Offline and weak signal
 
 The site is built to open outdoors with a bad or no mobile signal:

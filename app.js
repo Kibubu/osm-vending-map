@@ -57,9 +57,70 @@
   const map = L.map('map', {
     zoomControl: false, worldCopyJump: true,
     zoomSnap: 0,               // keep fractional zoom after pinch / wheel / fitBounds
-    zoomDelta: 0.5,            // +/- buttons and keyboard: half steps
-    wheelDebounceTime: 10,     // react to wheel events almost immediately (default 40 ms)
+    zoomDelta: 1,              // +/- buttons and keyboard: whole steps
+    scrollWheelZoom: false,    // replaced by SmoothWheelZoom below
+    fadeAnimation: false,      // tile fade-in runs a JS loop over every tile on each frame; skip it
   });
+
+  // Wheel and trackpad zoom that glides frame by frame towards a target, instead of Leaflet's
+  // debounced jumps with a CSS animation in between. Each wheel event moves the target; every
+  // animation frame moves the map part of the way there, keeping the point under the cursor fixed.
+  const SmoothWheelZoom = L.Handler.extend({
+    addHooks() { L.DomEvent.on(this._map._container, 'wheel', this._onWheel, this); },
+    removeHooks() { L.DomEvent.off(this._map._container, 'wheel', this._onWheel, this); this._end(); },
+
+    _onWheel(e) {
+      L.DomEvent.preventDefault(e);
+      const map = this._map;
+      if (map._animatingZoom) return; // let a running button / double-click zoom finish first
+      // Pixels per zoom level: trackpad pinch (sent as ctrl+wheel) reacts more strongly than a
+      // mouse wheel or two-finger scroll. Line/page deltas (Firefox) are turned into pixels.
+      const px = e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1);
+      const delta = -px / (e.ctrlKey ? 60 : 130);
+      if (!this._active) {
+        map._stop();
+        this._active = true;
+        this._goal = map.getZoom();
+        this._last = performance.now();
+        map._moveStart(true, false);
+        this._frame = requestAnimationFrame(this._step.bind(this));
+      }
+      this._pinch = e.ctrlKey;
+      this._goal = map._limitZoom(this._goal + Math.max(-2, Math.min(2, delta)));
+      this._mouse = map.mouseEventToContainerPoint(e);
+      this._anchor = map.containerPointToLatLng(this._mouse);
+      this._lastWheel = performance.now();
+    },
+
+    _step(now) {
+      const map = this._map;
+      const dt = Math.min(64, now - this._last);
+      this._last = now;
+      const zoom = map.getZoom();
+      // Time-based easing (same feel at 60 and 120 Hz): pinch follows the fingers almost directly.
+      const k = 1 - Math.exp(-dt / (this._pinch ? 25 : 70));
+      const diff = this._goal - zoom;
+      const next = Math.abs(diff) < 0.002 ? this._goal : zoom + diff * k;
+      if (next !== zoom) {
+        const offset = this._mouse.subtract(map.getSize().divideBy(2));
+        const center = map.unproject(map.project(this._anchor, next).subtract(offset), next);
+        // pinch: tile layers just scale during the gesture; with "faster zooming" off they also
+        // load the levels they pass through.
+        map._move(center, next, { pinch: fastZoom, round: false });
+      }
+      if (next === this._goal && now - this._lastWheel > 80) this._end();
+      else this._frame = requestAnimationFrame(this._step.bind(this));
+    },
+
+    _end() {
+      if (!this._active) return;
+      cancelAnimationFrame(this._frame);
+      this._active = false;
+      this._map._moveEnd(true);
+    },
+  });
+  map.addHandler('smoothWheelZoom', SmoothWheelZoom);
+  map.smoothWheelZoom.enable();
   // Open at the shared link's view or the start region right away, so map tiles start loading
   // while the data is still downloading (instead of first loading a zoom-6 view we then leave).
   const REGION_BOUNDS = [[50.93, 8.95], [51.33, 9.60]]; // Fritzlar and surroundings

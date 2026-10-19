@@ -15,7 +15,7 @@
  *
  * Bump VERSION together with the ?v= query strings in index.html on every deploy.
  */
-const VERSION = '20';
+const VERSION = '21';
 const SHELL_CACHE = `vm-shell-v${VERSION}`;
 const DATA_CACHE = 'vm-data';
 const TILE_CACHE = 'vm-tiles';
