@@ -52,7 +52,14 @@
   const $ = (id) => document.getElementById(id);
 
   // ---------- Map ----------
-  const map = L.map('map', { zoomControl: false, worldCopyJump: true });
+  // Continuous ("lens") zoom: no snapping to whole zoom levels, so pinch and trackpad zoom glide
+  // and stop wherever the fingers stop. Tiles of the nearest level are scaled in between.
+  const map = L.map('map', {
+    zoomControl: false, worldCopyJump: true,
+    zoomSnap: 0,               // keep fractional zoom after pinch / wheel / fitBounds
+    zoomDelta: 0.5,            // +/- buttons and keyboard: half steps
+    wheelDebounceTime: 10,     // react to wheel events almost immediately (default 40 ms)
+  });
   // Open at the shared link's view or the start region right away, so map tiles start loading
   // while the data is still downloading (instead of first loading a zoom-6 view we then leave).
   const REGION_BOUNDS = [[50.93, 8.95], [51.33, 9.60]]; // Fritzlar and surroundings
@@ -1374,7 +1381,7 @@
     const out = {};
     const m = (h.get('map') || '').split('/').map(Number);
     if (m.length === 3 && m.every(Number.isFinite) && Math.abs(m[1]) <= 90 && Math.abs(m[2]) <= 180) {
-      out.zoom = Math.min(19, Math.max(2, Math.round(m[0])));
+      out.zoom = Math.min(19, Math.max(2, Math.round(m[0] * 100) / 100));
       out.lat = m[1];
       out.lon = m[2];
     }
@@ -1384,7 +1391,7 @@
   }
 
   function hashFor(zoom, lat, lon, sel) {
-    return `#map=${zoom}/${lat.toFixed(5)}/${lon.toFixed(5)}${sel ? `&m=${sel}` : ''}`;
+    return `#map=${+zoom.toFixed(2)}/${lat.toFixed(5)}/${lon.toFixed(5)}${sel ? `&m=${sel}` : ''}`;
   }
 
   /** Keeps the address bar in sync with the view, so it can be copied at any time. */
