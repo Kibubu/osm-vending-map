@@ -69,15 +69,20 @@
   // the two label layers are spread over two hosts that serve the same tiles.
   const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
   const ESRI2 = 'https://services.arcgisonline.com/ArcGIS/rest/services';
+  const ESRI_CLARITY = 'https://clarity.maptiles.arcgis.com/arcgis/rest/services';
   // crossOrigin: tiles are fetched with CORS so the service worker can keep them for offline use
   // (no-CORS responses can't be inspected and count several MB each against the storage quota).
   const BASEMAPS = {
     map: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true, attribution: OSM_ATTR }),
     satellite: L.layerGroup([
+      // World Imagery mixes source mosaics with visibly different colours at mid zooms (e.g. a hard
+      // dark/bright seam around Bad Wildungen at z12–15). The Clarity variant uses one consistent
+      // mosaic from z14 up, but is blurry and cloudy below that, so each covers its own zoom range.
       L.tileLayer(`${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`, {
-        maxZoom: 19, maxNativeZoom: 18, crossOrigin: true,
+        maxZoom: 13, crossOrigin: true,
         attribution: 'Imagery &copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics, and the GIS User Community',
       }),
+      L.tileLayer(`${ESRI_CLARITY}/World_Imagery/MapServer/tile/{z}/{y}/{x}`, { minZoom: 14, maxZoom: 19, maxNativeZoom: 18, crossOrigin: true }),
       L.tileLayer(`${ESRI2}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 18, crossOrigin: true, opacity: 0.8 }),
       L.tileLayer(`${ESRI2}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 18, crossOrigin: true }),
     ]),

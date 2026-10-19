@@ -35,7 +35,7 @@ const SHELL_FILES = [
 ];
 const DATA_PATH = 'tiles/index.json';
 const CELL_PATH = 'tiles/c/';
-const TILE_HOSTS = new Set(['tile.openstreetmap.org', 'server.arcgisonline.com', 'services.arcgisonline.com']);
+const TILE_HOSTS = new Set(['tile.openstreetmap.org', 'server.arcgisonline.com', 'services.arcgisonline.com', 'clarity.maptiles.arcgis.com']);
 
 const NAV_TIMEOUT_MS = 4000;
 const DATA_TIMEOUT_MS = 6000;
