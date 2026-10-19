@@ -85,6 +85,11 @@ function keepTags(tags) {
   for (const k of Object.keys(tags).sort()) {
     if (KEEP_KEYS.includes(k) || KEEP_PREFIXES.some((p) => k.startsWith(p))) out[k] = tags[k];
   }
+  // The machine's own address as loc:* (what app.js shows in the popup and search.js searches).
+  // loc:* already present (from --geojson input) is kept as it is.
+  const addr = { street: tags['addr:street'], housenumber: tags['addr:housenumber'], city: tags['addr:city'] || tags['addr:place'] };
+  for (const [k, v] of Object.entries(addr)) if (v) out[`loc:${k}`] = v;
+  for (const k of ['street', 'housenumber', 'place', 'city', 'near']) if (tags[`loc:${k}`]) out[`loc:${k}`] = tags[`loc:${k}`];
   return out;
 }
 

@@ -16,10 +16,19 @@
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="vendor/markercluster/MarkerCluster.css">
   <link rel="stylesheet" href="vendor/markercluster/MarkerCluster.Default.css">
-  <link rel="stylesheet" href="style.css?v=19">
+  <link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
   <div id="map" role="application" aria-label="Map of vending machines"></div>
+
+  <div id="search" class="search" role="search">
+    <form autocomplete="off">
+      <span class="search-icon" aria-hidden="true">🔍</span>
+      <input type="search" enterkeyhint="search" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-results" placeholder="Search machines or places">
+      <button type="button" class="search-clear" hidden>✕</button>
+    </form>
+    <ul id="search-results" class="search-results" role="listbox" hidden></ul>
+  </div>
 
   <aside id="panel" class="panel" aria-label="Filter by type" data-i18n-aria="filter.aria">
     <button id="panel-toggle" class="panel-toggle" aria-expanded="true" aria-controls="panel-body">
@@ -58,8 +67,9 @@
   <!-- Leaflet 1.9.4 and Leaflet.markercluster 1.5.3, self-hosted (one origin fewer to reach on a weak signal). -->
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="vendor/markercluster/leaflet.markercluster.js"></script>
-  <script src="i18n.js?v=19"></script>
-  <script src="osm.js?v=19"></script>
-  <script src="app.js?v=19"></script>
+  <script src="i18n.js?v=20"></script>
+  <script src="osm.js?v=20"></script>
+  <script src="app.js?v=20"></script>
+  <script src="search.js?v=20"></script>
 </body>
 </html>
