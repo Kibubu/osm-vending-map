@@ -13,7 +13,7 @@ Features: marker clustering, filter panel with 9 groups covering the `vending=*`
 
 The search box (top left, or press `/`) finds two things:
 
-- **Vending machines** as you type, from the tiles loaded so far (the area you have looked at): by name, brand, operator, note, what they sell (raw OSM values and the names in all six languages, so *Zigaretten* and *cigarettes* both work) and their address if the machine has one in OSM. Results are sorted by distance from the map centre and show the location; picking one zooms to it and opens its popup.
+- **Vending machines** as you type, from the tiles loaded so far (the area you have looked at): by name, brand, operator, note, what they sell (raw OSM values and the names in all six languages, so *Zigaretten* and *cigarettes* both work) and where they are: street, village or town and a shop next to them (see [Location enrichment](#location-enrichment)). Results are sorted by distance from the map centre and show the location; picking one zooms to it and opens its popup.
 - **Places** (towns, streets, addresses) when you press Enter, via [Nominatim](https://nominatim.org/), preferring results near the current view. Enter again jumps to the best match. To respect the [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/) there is no search-as-you-type for places, at most one request per second, and answers are reused for the session. Place search needs a connection; machine search works offline.
 - Coordinates like `51.1254, 9.2814` jump straight to that spot.
 
@@ -121,7 +121,7 @@ Until a Client ID is set, the upload button is disabled and visitors get the not
 | `land.html` | OAuth redirect target that hands the login code back to the map |
 | `sw.js` | Service worker: offline cache for the app, data and map tiles |
 | `vendor/` | Leaflet and Leaflet.markercluster (pinned release files) |
-| `scripts/build-tiles.mjs` | Postpass query (or OSM extract) → data tiles in `tiles/` |
+| `scripts/build-tiles.mjs` | Postpass query with location enrichment (or OSM extract) → data tiles in `tiles/` |
 | `.github/workflows/deploy.yml` | Nightly tile build + deploy to GitHub Pages (also on every push) |
 | `tiles/` | Generated, not in `main`. It lives on the `tiles` branch (one force-pushed commit) |
 
@@ -136,7 +136,7 @@ The site is deployed by the workflow, not straight from the branch, because the 
 
 ## Update the data
 
-**Automatically:** the workflow runs nightly at 03:17 UTC. It asks [Postpass](https://postpass.geofabrik.de/) (Geofabrik's SQL interface to a minutely updated OSM database) for every `amenity=vending_machine` inside `REGION_BBOX`, with ways and relations as their centre point. This takes about 1 s and 130 KB for the Fritzlar region, or about 2 minutes and 80 MB for all of Europe. Then the tiles are force-pushed to the `tiles` branch as a single commit (no history build-up) and the site is deployed. Pushes to `main` deploy with the tiles from the last nightly build.
+**Automatically:** the workflow runs nightly at 03:17 UTC. It asks [Postpass](https://postpass.geofabrik.de/) (Geofabrik's SQL interface to a minutely updated OSM database) for every `amenity=vending_machine` inside `REGION_BBOX`, with ways and relations as their centre point, and in the same query where each machine is ([location enrichment](#location-enrichment)). This takes about 15 s and 250 KB for the Fritzlar region. Then the tiles are force-pushed to the `tiles` branch as a single commit (no history build-up) and the site is deployed. Pushes to `main` deploy with the tiles from the last nightly build.
 
 **Manually:** Actions tab → *Build data and deploy* → **Run workflow**, or:
 
@@ -156,11 +156,24 @@ npm run serve
 
 Other inputs: `--pbf <url|file>` streams a Geofabrik extract through [osmium-tool](https://osmcode.org/osmium-tool/) (a fallback if Postpass is down; `--bbox` crops it), `--opl <file>` and `--geojson <file>` read already filtered data.
 
+## Location enrichment
+
+Every machine gets a short description of where it is, so the popup can show it (*Where*, *Next to*) and search finds it by town, street or nearby shop. These `loc:*` properties are not OSM tags; the Postpass query derives them with nearest-neighbour lookups in PostGIS, next to the data:
+
+| Property | Value |
+|---|---|
+| `loc:street`, `loc:housenumber` | the machine's own `addr:*`, else the nearest address (node or building) within 30 m, else just the nearest named street within 60 m |
+| `loc:city` | the machine's `addr:city`, else that of the address, else the nearest town or village (a city counts 5×, a town 2.5× as close as a village) |
+| `loc:place` | the nearest suburb, village or hamlet within 2.5 km, if different from `loc:city` |
+| `loc:near` | the nearest named shop, amenity, station, office… within 30 m (not the machine's own name; areas over 20,000 m² such as parks don't count) |
+
+A machine inside a building or shop area counts as 0 m from it. The query costs about 20 ms per machine on the Postpass server, fine for a district or a state but not for all of Europe (hours). For very large regions use `--no-enrich`; then only a machine's own `addr:*` is shown. If the enriched query fails three times, the build falls back to the plain one. `--pbf`, `--opl` and `--geojson` input has no enrichment either (`loc:*` already in a GeoJSON is kept).
+
 ## Change the region
 
 Set `REGION_BBOX` (`south,west,north,east`) and `REGION_NAME` in `.github/workflows/deploy.yml`. [bboxfinder.com](http://bboxfinder.com/) is handy for picking a box (note it shows `west,south,east,north`). The start view is `REGION_BOUNDS` in `app.js`.
 
-All of Europe works too (`-25,34,45,72`; tested: 277,000 machines in about 2 minutes, 6,241 tiles, 51 KB gzipped index).
+All of Europe works too with `--no-enrich` (`-25,34,45,72`; tested: 277,000 machines in about 2 minutes, 6,241 tiles, 51 KB gzipped index).
 
 ## Attribution & licences
 

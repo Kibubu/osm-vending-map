@@ -13,7 +13,8 @@
 // Input (one of):
 //   --postpass <s,w,n,e> query the Postpass API (SQL over a minutely updated OSM database,
 //                       postpass.geofabrik.de) for the machines in this box. Small download
-//                       (~100 KB for a district, ~80 MB for all of Europe); the default choice
+//                       (~100 KB for a district, ~80 MB for all of Europe); the default choice,
+//                       and the only input with location enrichment (loc:*, see below)
 //   --pbf <url|file>    an OSM PBF extract (e.g. Geofabrik), streamed through osmium-tool,
 //                       so even Europe (~35 GB) needs no disk space for the extract itself
 //   --opl <file>        output of `osmium tags-filter ... -f opl` (already filtered)
@@ -23,6 +24,7 @@
 //   --region <name>     human-readable coverage label stored in the index
 //   --bbox <s,w,n,e>    keep only machines inside this box (south,west,north,east)
 //   --timestamp <iso>   data timestamp, if it can't be read from the PBF header
+//   --no-enrich         --postpass without the location enrichment (see below)
 //
 // Ways and relations come out of the extract without coordinates (single streaming pass), so
 // their centres are looked up on Overpass by id (a handful; skipped if Overpass is down).
@@ -52,6 +54,7 @@ const { values: args } = parseArgs({
     postpass: { type: 'string' }, pbf: { type: 'string' }, opl: { type: 'string' }, geojson: { type: 'string' },
     out: { type: 'string', default: 'tiles' }, region: { type: 'string', default: '' },
     timestamp: { type: 'string', default: '' }, bbox: { type: 'string', default: '' },
+    'no-enrich': { type: 'boolean', default: false },
   },
 });
 
@@ -90,17 +93,99 @@ function parseBbox(str, flag) {
   return b;
 }
 
-/** Asks Postpass for all vending machines in the box; ways/relations come as their centre. */
-async function queryPostpass(bboxStr) {
-  const [s, w, n, e] = parseBbox(bboxStr, '--postpass');
+// Location enrichment (--postpass): every machine gets loc:* properties describing where it is,
+// so the popup can show it and search can find it by town, street or shop. They are derived in
+// the same Postpass query (nearest-neighbour joins in PostGIS), not OSM tags:
+//   loc:street, loc:housenumber  the machine's own addr:* or the nearest address within ADDR_M
+//                                (else just the nearest named street within STREET_M)
+//   loc:city                     addr:city of that address, else the nearest town/village
+//   loc:place                    the nearest suburb/village/hamlet, if different from loc:city
+//   loc:near                     the nearest named shop/amenity/station… within NEAR_M
+const ADDR_M = 30;
+const STREET_M = 60;
+const NEAR_M = 30;
+const PLACE_M = 2500;      // for suburbs/hamlets; towns and villages use a weighted distance
+const NEAR_MAX_M2 = 20000; // larger areas (parks, fare zones…) would win "near" just by containing the machine
+const POI_KEYS = ['shop', 'amenity', 'tourism', 'leisure', 'railway', 'public_transport', 'office', 'craft', 'healthcare', 'sport'];
+
+/**
+ * SQL for the machines in the box, ways/relations as their centre; with `enrich` also the
+ * columns describeLocation() needs. Tag conditions are written as `tags->>'k' IS NOT NULL`, not
+ * `tags ? 'k'`: the latter makes PostgreSQL use the tag index (millions of rows) instead of the
+ * geometry index for every machine.
+ */
+function postpassSql([s, w, n, e], enrich) {
   const env = `ST_MakeEnvelope(${w},${s},${e},${n},4326)`;
   const where = `tags->>'amenity'='vending_machine' AND geom && ${env}`;
-  const sql = [
+  const machines = [
     `SELECT osm_type, osm_id, tags, geom FROM postpass_point WHERE ${where}`,
     `SELECT osm_type, osm_id, tags, ST_Centroid(geom) AS geom FROM postpass_polygon WHERE ${where}`,
     `SELECT osm_type, osm_id, tags, ST_Centroid(geom) AS geom FROM postpass_line WHERE ${where}`,
   ].join(' UNION ALL ');
-  console.log(`→ Querying Postpass for ${bboxStr}`);
+  if (!enrich) return machines;
+
+  // Candidates near the machine: bbox on the geometry index first, then the exact distance.
+  const deg = (m) => (m / 111320 / Math.cos(Math.max(Math.abs(s), Math.abs(n)) * Math.PI / 180)).toFixed(5);
+  const d = 'ST_Distance(x.geom::geography, vm.geom::geography)';
+  const near = (m) => `x.geom && ST_Expand(vm.geom, ${deg(m)}) AND ST_DWithin(x.geom::geography, vm.geom::geography, ${m})`;
+  const poi = (table, extra = '') => `SELECT x.tags->>'name' AS name, ${d} AS d FROM ${table} x
+      WHERE ${near(NEAR_M)} AND coalesce(x.tags->>'name', '') <> ''
+        AND x.tags->>'highway' IS NULL AND x.tags->>'place' IS NULL
+        AND x.tags->>'amenity' IS DISTINCT FROM 'vending_machine'
+        AND x.tags->>'name' IS DISTINCT FROM coalesce(vm.tags->>'name', vm.tags->>'brand')
+        AND coalesce(${POI_KEYS.map((k) => `x.tags->>'${k}'`).join(', ')}) IS NOT NULL ${extra}`;
+  return `WITH vm AS MATERIALIZED (${machines}),
+pl AS MATERIALIZED (
+  SELECT tags->>'name' AS name, tags->>'place' AS place, geom FROM postpass_point
+  WHERE geom && ST_Expand(${env}, 0.3) AND coalesce(tags->>'name', '') <> ''
+    AND tags->>'place' IN ('city','town','village','suburb','quarter','neighbourhood','hamlet','isolated_dwelling'))
+SELECT vm.osm_type, vm.osm_id, vm.tags, vm.geom,
+  a.tags->>'addr:street' AS a_street, a.tags->>'addr:housenumber' AS a_housenumber,
+  coalesce(a.tags->>'addr:city', a.tags->>'addr:place') AS a_city,
+  st.name AS street, poi.name AS near, c.name AS city, sp.name AS place
+FROM vm
+LEFT JOIN LATERAL (
+  SELECT x.tags FROM postpass_pointpolygon x WHERE ${near(ADDR_M)} AND x.tags->>'addr:street' IS NOT NULL
+  ORDER BY ${d} LIMIT 1) a ON true
+LEFT JOIN LATERAL (
+  SELECT x.tags->>'name' AS name FROM postpass_line x
+  WHERE ${near(STREET_M)} AND x.tags->>'highway' IS NOT NULL AND coalesce(x.tags->>'name', '') <> ''
+  ORDER BY ${d} LIMIT 1) st ON true
+LEFT JOIN LATERAL (
+  SELECT name FROM (${poi('postpass_point')} UNION ALL ${poi('postpass_polygon', `AND x.area_m2 < ${NEAR_MAX_M2}`)}) y
+  ORDER BY d LIMIT 1) poi ON true
+LEFT JOIN LATERAL (
+  -- smallest distance / weight: a city 5 km away wins over a village 2 km away
+  SELECT name FROM pl WHERE place IN ('city','town','village')
+  ORDER BY ST_Distance(pl.geom::geography, vm.geom::geography)
+    / CASE place WHEN 'city' THEN 5 WHEN 'town' THEN 2.5 ELSE 1 END LIMIT 1) c ON true
+LEFT JOIN LATERAL (
+  SELECT name FROM pl WHERE place NOT IN ('city','town')
+    AND ST_DWithin(pl.geom::geography, vm.geom::geography, ${PLACE_M})
+  ORDER BY ST_Distance(pl.geom::geography, vm.geom::geography) LIMIT 1) sp ON true`;
+}
+
+/** loc:* from the machine's own addr:* and the columns of the enriched query. */
+function describeLocation(tags, p) {
+  const loc = {};
+  if (tags['addr:street']) Object.assign(loc, { street: tags['addr:street'], housenumber: tags['addr:housenumber'] });
+  else if (p.a_street) Object.assign(loc, { street: p.a_street, housenumber: p.a_housenumber, city: p.a_city });
+  else loc.street = p.street;
+  loc.city = tags['addr:city'] || tags['addr:place'] || loc.city || p.city;
+  if (p.place !== loc.city) loc.place = p.place;
+  loc.near = p.near;
+  const out = {};
+  for (const k of ['street', 'housenumber', 'place', 'city', 'near']) if (loc[k]) out[`loc:${k}`] = loc[k];
+  return out;
+}
+
+/**
+ * Asks Postpass for all vending machines in the box with their loc:*; ways/relations come as
+ * their centre. If the enriched query keeps failing, the machines are fetched without it.
+ */
+async function queryPostpass(bboxStr, enrich = true) {
+  const sql = postpassSql(parseBbox(bboxStr, '--postpass'), enrich);
+  console.log(`→ Querying Postpass for ${bboxStr}${enrich ? ' with location enrichment' : ''}`);
   const t0 = Date.now();
   let lastErr;
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -118,7 +203,8 @@ async function queryPostpass(bboxStr) {
       const machines = gj.features.filter((f) => f.geometry?.type === 'Point').map((f) => {
         const p = f.properties;
         const [lon, lat] = f.geometry.coordinates;
-        return { id: p.osm_type.toLowerCase() + p.osm_id, lat, lon, tags: p.tags || {} };
+        const tags = p.tags || {};
+        return { id: p.osm_type.toLowerCase() + p.osm_id, lat, lon, tags: enrich ? { ...tags, ...describeLocation(tags, p) } : tags };
       });
       return [machines, gj.postpass_properties?.timestamp || ''];
     } catch (err) {
@@ -126,6 +212,10 @@ async function queryPostpass(bboxStr) {
       console.warn(`  ✗ attempt ${attempt}: ${err.message}`);
       if (attempt < 3) await new Promise((r) => setTimeout(r, 30000 * attempt));
     }
+  }
+  if (enrich) {
+    console.warn('  Location enrichment failed; fetching the machines without it');
+    return queryPostpass(bboxStr, false);
   }
   throw lastErr;
 }
@@ -214,7 +304,7 @@ async function resolveCentres(machines) {
 async function main() {
   let machines, stamp = args.timestamp;
   if (args.postpass) {
-    [machines, stamp] = await queryPostpass(args.postpass);
+    [machines, stamp] = await queryPostpass(args.postpass, !args['no-enrich']);
     stamp = args.timestamp || stamp;
   } else if (args.pbf) {
     let opl;
