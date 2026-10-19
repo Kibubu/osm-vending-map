@@ -13,7 +13,7 @@ Features: marker clustering, filter panel with 9 groups covering the `vending=*`
 
 The search box (top left, or press `/`) finds two things:
 
-- **Vending machines** as you type, from the loaded data: by name, brand, operator, note and what they sell (raw OSM values and the translated names, so *Kaffee* and *coffee* both work). Results are sorted by distance from the map centre; picking one zooms to it and opens its popup.
+- **Vending machines** as you type, from the loaded data: by name, brand, operator, note, what they sell (raw OSM values and the names in all six languages, so *Zigaretten* and *cigarettes* both work) and **where they are**: town, district/village, street, house number and the named place next to them (*fritzlar zigaretten*, *bahnhof*, *edeka*). Results are sorted by distance from the map centre and show the location; picking one zooms to it and opens its popup.
 - **Places** (towns, streets, addresses) when you press Enter, via [Nominatim](https://nominatim.org/), preferring results near the current view. Enter again jumps to the best match. To respect the [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/) there is no search-as-you-type for places, at most one request per second, and answers are reused for the session. Place search needs a connection; machine search works offline.
 - Coordinates like `51.1254, 9.2814` jump straight to that spot.
 
@@ -115,7 +115,7 @@ Until a Client ID is set, the upload button is disabled and visitors get the not
 | `sw.js` | Service worker: offline cache for the app, data and map tiles |
 | `vendor/` | Leaflet and Leaflet.markercluster (pinned release files) |
 | `data/vending.geojson` | Prebuilt data (one feature per line for readable diffs) |
-| `scripts/fetch-data.mjs` | Overpass → osmtogeojson → slim GeoJSON |
+| `scripts/fetch-data.mjs` | Overpass → osmtogeojson → slim GeoJSON, enriched with each machine's location |
 | `.github/workflows/update-data.yml` | Nightly + manual data refresh, commits only on change |
 
 ## Enable GitHub Pages
@@ -148,6 +148,19 @@ npm run serve          # http://localhost:8000
 ```
 
 Optional env vars for the script: `REGION_BBOX`, `REGION_NAME`, `OVERPASS_URLS` (comma-separated, tried in order), `OVERPASS_TIMEOUT`, `USER_AGENT`, `FORCE_WRITE=1`, `OVERPASS_INPUT` (convert a saved Overpass JSON response instead of querying).
+
+## Location enrichment
+
+Most vending machines in OSM have no address. The nightly script adds one from their surroundings, in the same Overpass request (about 45 s for the current region), so the map can show *where* a machine is and search can find it by town or street. These properties start with `loc:` and are derived, not OSM tags:
+
+| Property | From |
+|---|---|
+| `loc:street`, `loc:housenumber` | the machine's own `addr:*`, else the nearest address within 30 m, else the nearest named street within 60 m |
+| `loc:city` | `addr:city` of that address, else the nearest town/village (`place=*`, cities count as nearer than villages) |
+| `loc:place` | the nearest suburb, village or hamlet within 2.5 km, if it differs from `loc:city` |
+| `loc:near` | the nearest named shop, amenity, station, office… within 30 m |
+
+Radii are constants at the top of `scripts/fetch-data.mjs`. To work on the enrichment without querying Overpass every time, save one answer with `OVERPASS_SAVE=/tmp/op.json npm run fetch` and rerun with `OVERPASS_INPUT=/tmp/op.json FORCE_WRITE=1 npm run fetch`.
 
 ## Change the region
 

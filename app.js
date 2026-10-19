@@ -157,12 +157,21 @@
     return esc(v);
   }
 
+  /** "Schladenweg 3, Haddamar, Fritzlar" from the loc:* properties added by scripts/fetch-data.mjs. */
+  function whereText(props) {
+    const street = [props['loc:street'], props['loc:housenumber']].filter(Boolean).join(' ');
+    return [street, props['loc:place'], props['loc:city']].filter(Boolean).join(', ');
+  }
+
   function popupHtml(props, cats) {
     const type = props.osm_type, id = props.osm_id;
     const title = props.name || props.brand || (TYPE_BY_KEY[cats[0]] || {}).label || t('popup.title');
     const rows = [];
     const vend = (props.vending || '').split(/[;,]/).filter((v) => v.trim());
     rows.push([t('popup.type'), vend.length ? vend.map((v) => esc(itemLabel(v))).join(', ') : esc(t('popup.unknown'))]);
+    const where = whereText(props);
+    if (where) rows.push([t('popup.where'), esc(where)]);
+    if (props['loc:near']) rows.push([t('popup.near'), esc(props['loc:near'])]);
     for (const k of ['operator', 'brand', 'opening_hours', 'level', 'note']) {
       if (props[k] != null && props[k] !== '') rows.push([t(`popup.${k}`), esc(props[k])]);
     }
@@ -1645,7 +1654,7 @@
 
   // What search.js needs from the map (kept small so the two files stay independent).
   window.VM = {
-    map, esc, itemLabel, selectMachine,
+    map, esc, itemLabel, selectMachine, whereText,
     get entries() { return entries; },
     typeOf: (key) => TYPE_BY_KEY[key],
   };

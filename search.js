@@ -23,18 +23,20 @@
     .toLowerCase().replace(/ß/g, 'ss').replace(/[_;,]+/g, ' ');
 
   // ---------- Machines ----------
-  /** Text a machine can be found by, in the current language (rebuilt on language change). */
+  /** Text a machine can be found by: its tags, where it is, and what it sells in every language. */
   const hayCache = new WeakMap();
   function haystack(e) {
     let h = hayCache.get(e);
-    if (h && h.lang === I18N.lang) return h.text;
+    if (h) return h;
     const p = e.props;
-    const vend = (p.vending || '').split(/[;,]/).filter((v) => v.trim());
-    const parts = [p.name, p.brand, p.operator, p.note, ...vend, ...vend.map(VM.itemLabel),
-      ...e.cats.map((c) => VM.typeOf(c).label)];
-    h = { lang: I18N.lang, text: norm(parts.filter(Boolean).join(' ')) };
+    const vend = (p.vending || '').split(/[;,]/).map((v) => v.trim()).filter(Boolean);
+    const parts = [p.name, p.brand, p.operator, p.note, ...vend,
+      ...vend.flatMap((v) => I18N.tAll(`item.${v.toLowerCase().replace(/\s+/g, '_')}`)),
+      ...e.cats.flatMap((c) => I18N.tAll(`type.${c}`)),
+      p['loc:street'], p['loc:housenumber'], p['loc:place'], p['loc:city'], p['loc:near']];
+    h = norm(parts.filter(Boolean).join(' '));
     hayCache.set(e, h);
-    return h.text;
+    return h;
   }
 
   function findMachines(q) {
@@ -132,7 +134,8 @@
       const p = e.props;
       const vend = (p.vending || '').split(/[;,]/).filter((v) => v.trim()).map(VM.itemLabel).join(', ');
       const title = p.name || p.brand || vend || ty.label;
-      const sub = [title !== vend ? vend : '', p.operator && p.operator !== title ? p.operator : ''].filter(Boolean).join(' · ');
+      const where = [p['loc:near'], VM.whereText(p)].filter(Boolean).join(', ');
+      const sub = [title !== vend ? vend : '', where || (p.operator !== title && p.operator)].filter(Boolean).join(' · ');
       add(`<span class="si-icon" style="background:${ty.color}">${ty.emoji}</span>` +
         `<span class="si-text"><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>` +
         `<span class="si-dist">${esc(fmtDist(dist))}</span>`,
