@@ -1643,6 +1643,13 @@
 
   load();
 
+  // What search.js needs from the map (kept small so the two files stay independent).
+  window.VM = {
+    map, esc, itemLabel, selectMachine,
+    get entries() { return entries; },
+    typeOf: (key) => TYPE_BY_KEY[key],
+  };
+
   // ---------- Offline support ----------
   // sw.js caches the app, the data and every map tile seen, so the map opens without signal.
   // Off on a local dev server (it would serve stale files while editing) unless ?sw=1 is given.

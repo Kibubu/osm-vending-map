@@ -9,6 +9,14 @@ A static map of **vending machines** (`amenity=vending_machine`) from [OpenStree
 
 Features: marker clustering, filter panel with 9 groups covering the `vending=*` values used worldwide (see [docs/vending-values.md](docs/vending-values.md); synonyms like `snack`/`snacks` are merged, `drinks;sweets` counts for both), per-type colored emoji markers, popups with operator/brand/payment/opening hours/level/note and *View/Edit on OSM* links, "Locate me", data timestamp + total count, mobile layout with a collapsible panel.
 
+## Search
+
+The search box (top left, or press `/`) finds two things:
+
+- **Vending machines** as you type, from the loaded data: by name, brand, operator, note and what they sell (raw OSM values and the translated names, so *Kaffee* and *coffee* both work). Results are sorted by distance from the map centre; picking one zooms to it and opens its popup.
+- **Places** (towns, streets, addresses) when you press Enter, via [Nominatim](https://nominatim.org/), preferring results near the current view. Enter again jumps to the best match. To respect the [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/) there is no search-as-you-type for places, at most one request per second, and answers are reused for the session. Place search needs a connection; machine search works offline.
+- Coordinates like `51.1254, 9.2814` jump straight to that spot.
+
 ## Satellite view
 
 The 🛰️ button (left control column) switches to satellite imagery with road and place labels on top. 🗺️ switches back, and the choice is remembered per browser. Imagery: [Esri World Imagery](https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9) (© Esri, Maxar, Earthstar Geographics), free for non-commercial use with attribution, which is shown automatically. If the site ever becomes commercial or high-traffic, check Esri's terms or switch to another imagery provider in `app.js` → `BASEMAPS`.

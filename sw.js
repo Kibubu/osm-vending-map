@@ -11,7 +11,7 @@
  *
  * Bump VERSION together with the ?v= query strings in index.html on every deploy.
  */
-const VERSION = '18';
+const VERSION = '19';
 const SHELL_CACHE = `vm-shell-v${VERSION}`;
 const DATA_CACHE = 'vm-data';
 const TILE_CACHE = 'vm-tiles';
@@ -23,6 +23,7 @@ const SHELL_FILES = [
   `i18n.js?v=${VERSION}`,
   `osm.js?v=${VERSION}`,
   `app.js?v=${VERSION}`,
+  `search.js?v=${VERSION}`,
   'vendor/leaflet/leaflet.css',
   'vendor/leaflet/leaflet.js',
   'vendor/markercluster/MarkerCluster.css',
