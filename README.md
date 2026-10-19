@@ -1,11 +1,11 @@
 # osm-vending-map
 
-A static map of **vending machines** (`amenity=vending_machine`) from [OpenStreetMap](https://www.openstreetmap.org/), covering **all of Europe**. It opens at Fritzlar and surroundings.
+A static map of **vending machines** (`amenity=vending_machine`) from [OpenStreetMap](https://www.openstreetmap.org/), covering **Fritzlar and surroundings** (roughly Fritzlar, Homberg (Efze), Gudensberg, Felsberg, Bad Wildungen, Borken, Wabern and southern Kassel). The data pipeline scales to all of Europe (tested: 277,000 machines, 6,241 tiles, 51 KB gzipped index), see *Change the region*.
 
 - Pure static site (HTML/CSS/JS), no backend, no frontend build step.
 - [Leaflet 1.9.4](https://leafletjs.com/) + [Leaflet.markercluster 1.5.3](https://github.com/Leaflet/Leaflet.markercluster), self-hosted in `vendor/` (unchanged release files from unpkg, verified against their SRI hashes).
 - Works offline and on a weak mobile signal (service worker, see *Offline and weak signal*).
-- Data is prebuilt nightly by a GitHub Action from Geofabrik's Europe extract and cut into small tiles that load as you move the map (see *Data tiles*).
+- Data is prebuilt nightly by a GitHub Action from a Geofabrik extract and cut into small tiles that load as you move the map (see *Data tiles*).
 
 Features: marker clustering, filter panel with 9 groups covering the `vending=*` values used worldwide (see [docs/vending-values.md](docs/vending-values.md); synonyms like `snack`/`snacks` are merged, `drinks;sweets` counts for both), per-type colored emoji markers, popups with operator/brand/payment/opening hours/level/note and *View/Edit on OSM* links, "Locate me", data timestamp + total count, mobile layout with a collapsible panel.
 
@@ -62,7 +62,7 @@ https://kibubu.github.io/osm-vending-map/#map=17/51.12544/9.28142&m=node/1198697
 
 ## Data tiles
 
-All of Europe is too much to download at once on a phone (and too much for one Overpass query), so the data is split into a grid:
+A large region (up to all of Europe) is too much to download at once on a phone, and too much for one Overpass query, so the data is split into a grid:
 
 - **`tiles/index.json`** (one small download, cached) lists every grid cell that has machines: `[level, i, j, count, hash]`. Cells are 0.25° (~28 × 18 km). Cells with more than 1000 machines (city centres) are split into quarters, down to ~1.7 km, so no single file gets big.
 - **`tiles/c/{level}_{i}_{j}.json`** holds the machines of one cell as `[id, lat, lon, tags]` rows (id like `n123`). Typically 1–15 KB gzipped.
@@ -136,7 +136,7 @@ The site is deployed by the workflow, not straight from the branch, because the 
 
 ## Update the data
 
-**Automatically:** the workflow runs nightly at 03:17 UTC. It streams Geofabrik's `europe-latest.osm.pbf` (~35 GB) through `osmium tags-filter`, so nothing big is stored on the runner, and takes roughly 15–30 minutes. Ways and relations tagged as vending machines (very few) get their centre from Overpass by id. Then the tiles are force-pushed to the `tiles` branch as a single commit (no history build-up) and the site is deployed. Pushes to `main` deploy with the tiles from the last nightly build.
+**Automatically:** the workflow runs nightly at 03:17 UTC. It streams Geofabrik's Hessen extract (~350 MB) through `osmium tags-filter` and keeps the machines inside `REGION_BBOX`. Ways and relations tagged as vending machines (very few) get their centre from Overpass by id. Then the tiles are force-pushed to the `tiles` branch as a single commit (no history build-up) and the site is deployed. Pushes to `main` deploy with the tiles from the last nightly build.
 
 **Manually:** Actions tab → *Build data and deploy* → **Run workflow**, or:
 
@@ -162,7 +162,15 @@ Machines that carry their own `addr:*` tags in OSM get them as `loc:street`, `lo
 
 ## Change the region
 
-Set `PBF_URL` and `REGION_NAME` in `.github/workflows/deploy.yml` to any [Geofabrik extract](https://download.geofabrik.de/) (a country is much faster to build than Europe). The start view is `REGION_BOUNDS` in `app.js`.
+In `.github/workflows/deploy.yml` set:
+
+- `PBF_URL`: the smallest [Geofabrik extract](https://download.geofabrik.de/) that contains the region. It is downloaded every night, so keep it small.
+- `REGION_BBOX`: `south,west,north,east`, or empty to keep the whole extract. [bboxfinder.com](http://bboxfinder.com/) is handy for picking one (note it shows `west,south,east,north`).
+- `REGION_NAME`: the label shown in the footer tooltip.
+
+The start view is `REGION_BOUNDS` in `app.js`.
+
+All of Europe works too (`europe-latest.osm.pbf`, empty bbox; tested once: ~6.5 minutes on a GitHub runner). It means downloading ~35 GB from Geofabrik's free servers on every run, so don't run it nightly.
 
 ## Attribution & licences
 

@@ -18,6 +18,7 @@
 // Options:
 //   --out <dir>         output directory (default: tiles); it is replaced completely
 //   --region <name>     human-readable coverage label stored in the index
+//   --bbox <s,w,n,e>    keep only machines inside this box (south,west,north,east)
 //   --timestamp <iso>   data timestamp, if it can't be read from the PBF header
 //
 // Ways and relations come out of the extract without coordinates (single streaming pass), so
@@ -46,7 +47,7 @@ const { values: args } = parseArgs({
   options: {
     pbf: { type: 'string' }, opl: { type: 'string' }, geojson: { type: 'string' },
     out: { type: 'string', default: 'tiles' }, region: { type: 'string', default: '' },
-    timestamp: { type: 'string', default: '' },
+    timestamp: { type: 'string', default: '' }, bbox: { type: 'string', default: '' },
   },
 });
 
@@ -173,6 +174,17 @@ async function main() {
     stamp = stamp || gj.metadata?.timestamp_osm_base || '';
   } else {
     throw new Error('Give one of --pbf, --opl or --geojson.');
+  }
+  if (args.bbox) {
+    const b = args.bbox.split(',').map(Number);
+    if (b.length !== 4 || b.some((n) => !Number.isFinite(n)) || b[0] >= b[2] || b[1] >= b[3]) {
+      throw new Error(`--bbox must be "south,west,north,east", got "${args.bbox}"`);
+    }
+    // Ways/relations have no position yet; keep them until their centre is known.
+    const inside = (m) => m.lat == null || (m.lat >= b[0] && m.lat <= b[2] && m.lon >= b[1] && m.lon <= b[3]);
+    machines = machines.filter(inside);
+    await resolveCentres(machines);
+    machines = machines.filter((m) => m.lat != null && inside(m));
   }
   console.log(`Found ${machines.length} vending machines`);
   await resolveCentres(machines);
